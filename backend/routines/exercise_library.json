@@ -1,0 +1,740 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-03-01",
+  "notes": "Person 4: exercise intelligence library used by routine generator + live coaching.",
+  "exercises": [
+    {
+      "id": "air_squat",
+      "name": "Air Squat",
+      "modality": "strength",
+      "movement": "squat",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["quads", "glutes"],
+      "secondary_muscles": ["core", "calves"],
+      "default_set": { "type": "reps", "reps_min": 8, "reps_max": 15, "rest_seconds": 30 },
+      "coaching": {
+        "setup": [
+          "Stand tall, feet about shoulder-width apart.",
+          "Toes slightly turned out, tripod foot: big toe, little toe, heel."
+        ],
+        "cues": [
+          "Sit your hips back and down like a chair.",
+          "Knees track over your toes (don’t cave in).",
+          "Keep your chest proud and ribs stacked over hips."
+        ],
+        "breathing": [
+          "Inhale on the way down.",
+          "Exhale as you stand up."
+        ],
+        "tempo": "2 seconds down, brief pause, drive up",
+        "range_of_motion": "As low as you can control while keeping heels down and spine neutral."
+      },
+      "common_mistakes": [
+        {
+          "name": "Knees cave inward",
+          "looks_like": "Knees collapse toward each other during the descent or ascent.",
+          "risk": "Increases knee stress and reduces glute engagement.",
+          "fix_cues": ["Press knees gently out over toes.", "Spread the floor with your feet."]
+        },
+        {
+          "name": "Heels lift",
+          "looks_like": "Weight shifts to toes; heels pop up near the bottom.",
+          "risk": "Reduces stability and can round the back.",
+          "fix_cues": ["Shift weight back into your heels.", "Shorten range and work deeper gradually."]
+        }
+      ],
+      "safety_notes": ["Keep pain-free range. If knees hurt, reduce depth and slow down."],
+      "regressions": ["Chair squat (touch-and-go)", "Box squat to a high surface"],
+      "progressions": ["Tempo squat (3-1-1)", "Pause squat (2 sec at bottom)"],
+      "gemini": {
+        "one_sentence": "Sit your hips back and down, knees over toes, then stand tall.",
+        "start_prompt": "We’re doing air squats. Think: hips back and down, knees track over toes, chest proud. I’ll cue you if anything drifts.",
+        "mid_rep_corrections": [
+          "Knees out a touch—track over your toes.",
+          "Keep your heels heavy—sit back a little.",
+          "Chest up—ribs stacked, don’t fold forward."
+        ],
+        "interruption_safe_phrase": "Pause right where you are—reset your stance when you’re ready."
+      }
+    },
+    {
+      "id": "reverse_lunge",
+      "name": "Reverse Lunge",
+      "modality": "strength",
+      "movement": "lunge",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["glutes", "quads"],
+      "secondary_muscles": ["core"],
+      "default_set": { "type": "reps", "reps_min": 6, "reps_max": 10, "rest_seconds": 30, "per_side": true },
+      "coaching": {
+        "setup": ["Stand tall. Hands on hips or at sides.", "Brace your core gently—tall posture."],
+        "cues": [
+          "Step one foot back and lower straight down.",
+          "Front knee stays over mid-foot; back knee points down.",
+          "Push the floor away with the front foot to return."
+        ],
+        "breathing": ["Inhale as you lower.", "Exhale as you stand."],
+        "tempo": "controlled down, steady up",
+        "range_of_motion": "Lower until both knees are comfortably bent; keep torso tall."
+      },
+      "common_mistakes": [
+        {
+          "name": "Front knee collapses inward",
+          "looks_like": "Knee dives toward the inside as you lower/stand.",
+          "risk": "Knee stress and loss of stability.",
+          "fix_cues": ["Press knee out gently.", "Imagine headlights on your knees pointing forward."]
+        },
+        {
+          "name": "Too narrow stance",
+          "looks_like": "Feet on a tightrope causing wobble.",
+          "risk": "Balance issues, knee/hip compensation.",
+          "fix_cues": ["Step back on railroad tracks—hip-width.", "Widen your base slightly."]
+        }
+      ],
+      "safety_notes": ["Use a smaller step back if you feel knee pressure.", "Hold a wall or chair for balance if needed."],
+      "regressions": ["Supported reverse lunge (hold wall)", "Split squat (no stepping)"],
+      "progressions": ["Tempo lunge (3 sec down)", "Alternating reverse lunge (continuous)"],
+      "gemini": {
+        "one_sentence": "Step back, drop straight down, then drive up through the front foot.",
+        "start_prompt": "Reverse lunges: step back on railroad tracks, torso tall, front knee over mid-foot. Smooth and controlled.",
+        "mid_rep_corrections": [
+          "Widen your stance a bit—more stable.",
+          "Front knee tracks over toes—don’t let it cave.",
+          "Stay tall—don’t lean forward."
+        ],
+        "interruption_safe_phrase": "Stop and stand tall. We’ll reset your footing."
+      }
+    },
+    {
+      "id": "push_up",
+      "name": "Push-Up",
+      "modality": "strength",
+      "movement": "push",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["chest", "triceps"],
+      "secondary_muscles": ["shoulders", "core"],
+      "default_set": { "type": "reps", "reps_min": 5, "reps_max": 12, "rest_seconds": 45 },
+      "coaching": {
+        "setup": [
+          "Hands under shoulders, fingers spread.",
+          "Body in a straight line: head, ribs, hips, heels."
+        ],
+        "cues": [
+          "Lower with elbows about 30–45° from your body.",
+          "Keep ribs down—don’t sag your low back.",
+          "Press the floor away and lock in your plank at the top."
+        ],
+        "breathing": ["Inhale as you lower.", "Exhale as you push up."],
+        "tempo": "2 seconds down, 1 second up",
+        "range_of_motion": "Chest toward floor while maintaining a rigid plank."
+      },
+      "common_mistakes": [
+        {
+          "name": "Hips sag",
+          "looks_like": "Low back arches; hips drop below shoulders.",
+          "risk": "Low-back strain, reduced core control.",
+          "fix_cues": ["Squeeze glutes.", "Ribs down—strong plank."]
+        },
+        {
+          "name": "Elbows flare",
+          "looks_like": "Elbows out wide at 90°.",
+          "risk": "Shoulder irritation.",
+          "fix_cues": ["Tuck elbows slightly.", "Aim elbows toward your back pockets."]
+        }
+      ],
+      "safety_notes": ["If wrists hurt, use fists or elevate hands on a bench/counter."],
+      "regressions": ["Incline push-up (hands elevated)", "Knee push-up (keep straight line knees-to-head)"],
+      "progressions": ["Tempo push-up (3 sec down)", "Pause push-up (1 sec at bottom)"],
+      "gemini": {
+        "one_sentence": "Strong plank body, lower with control, press the floor away.",
+        "start_prompt": "Push-ups: keep a straight line, elbows about 45 degrees, ribs down. If form breaks, we’ll switch to incline.",
+        "mid_rep_corrections": [
+          "Squeeze glutes—keep hips level.",
+          "Elbows in a bit—protect those shoulders.",
+          "Slow down on the way down—control it."
+        ],
+        "interruption_safe_phrase": "Hold plank or drop knees—then reset."
+      }
+    },
+    {
+      "id": "plank",
+      "name": "Front Plank",
+      "modality": "core",
+      "movement": "core",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["core"],
+      "secondary_muscles": ["shoulders", "glutes"],
+      "default_set": { "type": "time", "seconds": 30, "rest_seconds": 30 },
+      "coaching": {
+        "setup": ["Elbows under shoulders (or hands under shoulders).", "Feet hip-width for stability."],
+        "cues": [
+          "Ribs down—brace like someone’s about to poke your sides.",
+          "Squeeze glutes and press forearms into the floor.",
+          "Neck long—look slightly ahead of hands."
+        ],
+        "breathing": ["Slow, quiet breaths while staying braced."],
+        "tempo": "steady hold",
+        "range_of_motion": "Static hold with neutral spine."
+      },
+      "common_mistakes": [
+        {
+          "name": "Piking hips",
+          "looks_like": "Butt shoots up high; shoulders drift back.",
+          "risk": "Reduces core stimulus.",
+          "fix_cues": ["Bring hips in line with shoulders.", "Long straight line."]
+        },
+        {
+          "name": "Low back arch",
+          "looks_like": "Belly drops; ribs flare.",
+          "risk": "Low-back discomfort.",
+          "fix_cues": ["Ribs down.", "Squeeze glutes and brace."]
+        }
+      ],
+      "safety_notes": ["Stop if you feel pinching in low back—reset and shorten the hold."],
+      "regressions": ["Knee plank", "Elevated forearm plank (forearms on bench)"],
+      "progressions": ["Plank shoulder taps", "Long-lever plank (elbows slightly forward)"],
+      "gemini": {
+        "one_sentence": "Ribs down, glutes tight, and breathe while holding a straight line.",
+        "start_prompt": "Plank: brace, squeeze glutes, keep ribs down. I want steady breathing—no sagging, no piking.",
+        "mid_rep_corrections": [
+          "Ribs down—brace harder.",
+          "Hips a touch lower—straight line.",
+          "Squeeze glutes—protect your low back."
+        ],
+        "interruption_safe_phrase": "Drop knees, take a breath, and we’ll set up again."
+      }
+    },
+    {
+      "id": "glute_bridge",
+      "name": "Glute Bridge",
+      "modality": "strength",
+      "movement": "hinge",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["glutes"],
+      "secondary_muscles": ["hamstrings", "core"],
+      "default_set": { "type": "reps", "reps_min": 10, "reps_max": 20, "rest_seconds": 30 },
+      "coaching": {
+        "setup": ["Lie on your back, knees bent, feet flat near hips.", "Arms by sides, ribs down."],
+        "cues": [
+          "Press through heels and lift hips.",
+          "Stop when hips are in line with ribs and knees—don’t over-arch.",
+          "Squeeze glutes at the top for 1 second."
+        ],
+        "breathing": ["Exhale as you lift.", "Inhale as you lower."],
+        "tempo": "smooth up, 1-sec squeeze, smooth down",
+        "range_of_motion": "Lift to a neutral hip extension without low-back arching."
+      },
+      "common_mistakes": [
+        {
+          "name": "Overarching low back",
+          "looks_like": "Ribs flare and low back takes over at the top.",
+          "risk": "Low-back irritation, less glute work.",
+          "fix_cues": ["Keep ribs down.", "Tuck pelvis slightly and squeeze glutes."]
+        },
+        {
+          "name": "Pushing through toes",
+          "looks_like": "Heels lighten and hamstrings cramp.",
+          "risk": "Hamstring dominance/cramping.",
+          "fix_cues": ["Heels heavy.", "Bring feet a bit closer to hips."]
+        }
+      ],
+      "safety_notes": ["If hamstrings cramp, shorten range and emphasize heel pressure."],
+      "regressions": ["Glute bridge holds (10–20 sec)"],
+      "progressions": ["Single-leg glute bridge", "Tempo bridge (3 sec down)"],
+      "gemini": {
+        "one_sentence": "Heels heavy, lift hips, squeeze glutes, keep ribs down.",
+        "start_prompt": "Glute bridges: press through heels, lift hips to a straight line, squeeze glutes—no low-back arch.",
+        "mid_rep_corrections": [
+          "Ribs down—don’t arch your back.",
+          "Heels heavy—push the floor away.",
+          "Squeeze glutes at the top—own it."
+        ],
+        "interruption_safe_phrase": "Pause at the bottom, reset ribs down, then continue."
+      }
+    },
+    {
+      "id": "dead_bug",
+      "name": "Dead Bug",
+      "modality": "core",
+      "movement": "core",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["core"],
+      "secondary_muscles": ["hip_flexors"],
+      "default_set": { "type": "reps", "reps_min": 6, "reps_max": 10, "rest_seconds": 30, "per_side": true },
+      "coaching": {
+        "setup": ["Lie on your back, knees and hips at 90°, arms up.", "Press low back gently into the floor."],
+        "cues": [
+          "Reach opposite arm and leg away slowly.",
+          "Keep ribs down and low back in contact with floor.",
+          "Return and switch sides with control."
+        ],
+        "breathing": ["Exhale as you extend.", "Inhale as you return."],
+        "tempo": "slow and controlled",
+        "range_of_motion": "Only extend as far as you can keep low back down."
+      },
+      "common_mistakes": [
+        {
+          "name": "Low back lifts",
+          "looks_like": "Arch appears as you extend the leg.",
+          "risk": "Low-back strain and loss of core control.",
+          "fix_cues": ["Shorten the reach.", "Exhale and pull ribs down."]
+        }
+      ],
+      "safety_notes": ["Neck relaxed; keep gaze up. Reduce range if you feel back strain."],
+      "regressions": ["Heel taps (one leg at a time)", "Arms-only dead bug"],
+      "progressions": ["Longer reach with slower tempo", "Add pause at full extension"],
+      "gemini": {
+        "one_sentence": "Move slow, keep low back down, and breathe out as you extend.",
+        "start_prompt": "Dead bug: keep your low back gently pressed down, reach opposite arm/leg slowly. If your back lifts, shorten the range.",
+        "mid_rep_corrections": [
+          "Exhale—ribs down.",
+          "Shorter leg reach—keep back flat.",
+          "Slow it down—control wins here."
+        ],
+        "interruption_safe_phrase": "Hug knees in for a breath, then reset."
+      }
+    },
+    {
+      "id": "bird_dog",
+      "name": "Bird Dog",
+      "modality": "core",
+      "movement": "core",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["core"],
+      "secondary_muscles": ["glutes", "upper_back"],
+      "default_set": { "type": "reps", "reps_min": 6, "reps_max": 10, "rest_seconds": 20, "per_side": true },
+      "coaching": {
+        "setup": ["Hands under shoulders, knees under hips.", "Spine neutral, gaze down."],
+        "cues": [
+          "Reach opposite arm and leg long—don’t lift high.",
+          "Keep hips square to the floor.",
+          "Return slowly and switch."
+        ],
+        "breathing": ["Exhale as you reach.", "Inhale as you return."],
+        "tempo": "slow and steady",
+        "range_of_motion": "Long reach with minimal torso movement."
+      },
+      "common_mistakes": [
+        {
+          "name": "Rotating hips",
+          "looks_like": "One hip opens up to the side.",
+          "risk": "Less core stability training.",
+          "fix_cues": ["Keep both hip bones facing the floor.", "Reach long, not high."]
+        }
+      ],
+      "safety_notes": ["If wrists are sensitive, do fists or forearms."],
+      "regressions": ["Leg-only reach", "Arm-only reach"],
+      "progressions": ["Hold each rep 2–3 seconds", "Add slow elbow-to-knee tap under body"],
+      "gemini": {
+        "one_sentence": "Reach long, keep hips square, and don’t wobble.",
+        "start_prompt": "Bird dog: opposite arm and leg reach long, hips square, spine neutral. Minimal movement—maximum control.",
+        "mid_rep_corrections": [
+          "Hips square—don’t rotate.",
+          "Reach long, not high.",
+          "Slow it down—no wobble."
+        ],
+        "interruption_safe_phrase": "Come back to hands and knees and breathe."
+      }
+    },
+    {
+      "id": "good_morning",
+      "name": "Bodyweight Good Morning (Hip Hinge)",
+      "modality": "strength",
+      "movement": "hinge",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["hamstrings", "glutes"],
+      "secondary_muscles": ["upper_back", "core"],
+      "default_set": { "type": "reps", "reps_min": 8, "reps_max": 15, "rest_seconds": 30 },
+      "coaching": {
+        "setup": ["Stand tall, feet hip-width.", "Hands on hips or crossed at chest."],
+        "cues": [
+          "Soft knees, push hips back like closing a car door.",
+          "Keep spine long and chest slightly proud.",
+          "Stand by squeezing glutes—don’t yank with low back."
+        ],
+        "breathing": ["Inhale as you hinge back.", "Exhale as you stand."],
+        "tempo": "controlled",
+        "range_of_motion": "Hinge until you feel hamstrings stretch while keeping a neutral spine."
+      },
+      "common_mistakes": [
+        {
+          "name": "Rounding back",
+          "looks_like": "Upper back slumps; spine curves.",
+          "risk": "Back strain.",
+          "fix_cues": ["Keep a long spine.", "Think ‘proud chest’ and ‘hips back’."]
+        },
+        {
+          "name": "Squatting instead of hinging",
+          "looks_like": "Knees bend a lot and hips drop.",
+          "risk": "Less hamstring/glute work; different pattern.",
+          "fix_cues": ["Soft knees only.", "Hips go back more than down."]
+        }
+      ],
+      "safety_notes": ["Keep it pain-free. Reduce range if you feel back discomfort."],
+      "regressions": ["Hip hinge to wall (tap hips to wall)"],
+      "progressions": ["Single-leg hinge reach", "Tempo hinge (3 sec down)"],
+      "gemini": {
+        "one_sentence": "Soft knees, hips back, long spine, stand by squeezing glutes.",
+        "start_prompt": "Hip hinge: slight knee bend, push hips back, keep a long spine. You should feel hamstrings, not low back.",
+        "mid_rep_corrections": [
+          "Long spine—don’t round.",
+          "More hips back, less knees.",
+          "Squeeze glutes to stand—don’t crank your back."
+        ],
+        "interruption_safe_phrase": "Stand tall, shake out legs, and reset your hinge."
+      }
+    },
+    {
+      "id": "mountain_climber",
+      "name": "Mountain Climber",
+      "modality": "cardio",
+      "movement": "cardio",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["core"],
+      "secondary_muscles": ["shoulders", "hip_flexors"],
+      "default_set": { "type": "time", "seconds": 30, "rest_seconds": 30 },
+      "coaching": {
+        "setup": ["Start in a strong high plank.", "Hands under shoulders, feet back."],
+        "cues": [
+          "Drive knees toward chest, alternating.",
+          "Keep hips level—don’t bounce your hips.",
+          "Press the floor away and keep shoulders stable."
+        ],
+        "breathing": ["Steady breathing—don’t hold your breath."],
+        "tempo": "smooth and rhythmic",
+        "range_of_motion": "Knee drives as far as you can without hips hiking."
+      },
+      "common_mistakes": [
+        {
+          "name": "Hips bouncing",
+          "looks_like": "Butt pops up and down with each rep.",
+          "risk": "Less core control; more fatigue on shoulders.",
+          "fix_cues": ["Keep hips level.", "Slow down slightly to stay stable."]
+        }
+      ],
+      "safety_notes": ["If wrists bother you, do forearm climbers or elevate hands."],
+      "regressions": ["Slow mountain climbers", "Incline mountain climbers (hands elevated)"],
+      "progressions": ["Faster tempo while staying stable", "Cross-body climbers"],
+      "gemini": {
+        "one_sentence": "Strong plank, hips steady, knees drive in rhythm.",
+        "start_prompt": "Mountain climbers: solid plank first. Keep hips steady and shoulders stacked over hands—then pick up the rhythm.",
+        "mid_rep_corrections": [
+          "Hips steady—less bouncing.",
+          "Press the floor away—strong shoulders.",
+          "Slow slightly—control first, speed second."
+        ],
+        "interruption_safe_phrase": "Hold plank and breathe—then continue when stable."
+      }
+    },
+    {
+      "id": "jumping_jack",
+      "name": "Jumping Jack",
+      "modality": "cardio",
+      "movement": "cardio",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["cardio"],
+      "secondary_muscles": ["calves", "shoulders"],
+      "default_set": { "type": "time", "seconds": 30, "rest_seconds": 20 },
+      "coaching": {
+        "setup": ["Stand tall, arms by sides."],
+        "cues": [
+          "Soft knees, land quietly.",
+          "Arms and legs move together—smooth rhythm.",
+          "Stay tall—don’t hunch shoulders."
+        ],
+        "breathing": ["Steady breathing; keep a conversational pace if needed."],
+        "tempo": "rhythmic",
+        "range_of_motion": "Comfortable range—no need to go max width."
+      },
+      "common_mistakes": [
+        {
+          "name": "Loud hard landings",
+          "looks_like": "Stomping; knees stiff on landing.",
+          "risk": "Joint stress.",
+          "fix_cues": ["Land softly with soft knees.", "Think ‘quiet feet’."]
+        }
+      ],
+      "safety_notes": ["Low-impact option: step jacks (step side-to-side)."],
+      "regressions": ["Step jacks"],
+      "progressions": ["Faster cadence while staying quiet", "Add overhead reach with control"],
+      "gemini": {
+        "one_sentence": "Quiet feet, soft knees, smooth rhythm.",
+        "start_prompt": "Jumping jacks: land softly, keep it smooth. If you want low-impact, switch to step jacks—same rhythm.",
+        "mid_rep_corrections": [
+          "Quiet feet—soft knees.",
+          "Stay tall—shoulders relaxed.",
+          "Smooth rhythm—no rushing."
+        ],
+        "interruption_safe_phrase": "Switch to step jacks and breathe."
+      }
+    },
+    {
+      "id": "wall_sit",
+      "name": "Wall Sit",
+      "modality": "strength",
+      "movement": "squat",
+      "level": "beginner",
+      "equipment": ["wall"],
+      "primary_muscles": ["quads"],
+      "secondary_muscles": ["glutes", "core"],
+      "default_set": { "type": "time", "seconds": 30, "rest_seconds": 30 },
+      "coaching": {
+        "setup": ["Back against a wall, feet about 1–2 feet forward.", "Slide down until thighs are at a comfortable angle."],
+        "cues": [
+          "Knees track over toes.",
+          "Keep full foot contact—heels down.",
+          "Stay tall through the torso—don’t fold forward."
+        ],
+        "breathing": ["Slow breaths—relax face and shoulders."],
+        "tempo": "steady hold",
+        "range_of_motion": "Hold at a depth you can maintain with good knee tracking."
+      },
+      "common_mistakes": [
+        {
+          "name": "Knees too far forward",
+          "looks_like": "Knees push far past toes; feet too close to wall.",
+          "risk": "Knee discomfort.",
+          "fix_cues": ["Walk feet slightly farther out.", "Shins more vertical."]
+        }
+      ],
+      "safety_notes": ["If knees hurt, come higher and shorten hold."],
+      "regressions": ["Higher wall sit (less knee bend)"],
+      "progressions": ["Longer holds (45–60 sec)", "Single-leg wall sit (advanced)"],
+      "gemini": {
+        "one_sentence": "Feet a bit forward, knees over toes, breathe and hold.",
+        "start_prompt": "Wall sit: back flat, feet forward enough that knees feel good, knees track over toes. Breathe—this burns but you’ve got it.",
+        "mid_rep_corrections": [
+          "Walk feet a bit forward—protect knees.",
+          "Knees over toes—don’t cave in.",
+          "Tall torso—don’t fold."
+        ],
+        "interruption_safe_phrase": "Slide up a few inches and keep breathing."
+      }
+    },
+    {
+      "id": "side_plank",
+      "name": "Side Plank",
+      "modality": "core",
+      "movement": "core",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["obliques"],
+      "secondary_muscles": ["shoulders", "glutes"],
+      "default_set": { "type": "time", "seconds": 20, "rest_seconds": 20, "per_side": true },
+      "coaching": {
+        "setup": ["Elbow under shoulder, legs stacked or staggered.", "Top hand on hip or reaching up."],
+        "cues": [
+          "Lift hips into a straight line—don’t let hips sag.",
+          "Press forearm into floor and keep shoulder away from ear.",
+          "Brace and breathe."
+        ],
+        "breathing": ["Slow breaths while holding the line."],
+        "tempo": "steady hold",
+        "range_of_motion": "Static hold with stacked ribs and hips."
+      },
+      "common_mistakes": [
+        {
+          "name": "Hips sag",
+          "looks_like": "Waistline collapses toward the floor.",
+          "risk": "Shoulder strain and less oblique work.",
+          "fix_cues": ["Lift hips higher.", "Shorten hold and rebuild."]
+        }
+      ],
+      "safety_notes": ["If shoulder feels pinchy, switch to side plank from knees."],
+      "regressions": ["Knee side plank"],
+      "progressions": ["Top-leg raise", "Star side plank (advanced)"],
+      "gemini": {
+        "one_sentence": "Straight line ribs-to-hips, shoulder stable, breathe.",
+        "start_prompt": "Side plank: elbow under shoulder, lift hips into one long line. If it’s too spicy, drop your bottom knee.",
+        "mid_rep_corrections": [
+          "Hips up—keep the line.",
+          "Shoulder away from ear—press the floor.",
+          "Breathe—don’t hold your breath."
+        ],
+        "interruption_safe_phrase": "Drop your bottom knee and reset."
+      }
+    },
+    {
+      "id": "calf_raise",
+      "name": "Calf Raise",
+      "modality": "strength",
+      "movement": "carry",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["calves"],
+      "secondary_muscles": ["ankles"],
+      "default_set": { "type": "reps", "reps_min": 12, "reps_max": 20, "rest_seconds": 20 },
+      "coaching": {
+        "setup": ["Stand tall, feet hip-width. Hold a wall lightly if needed."],
+        "cues": [
+          "Rise up onto the balls of your feet.",
+          "Pause at the top for 1 second.",
+          "Lower slowly—don’t drop."
+        ],
+        "breathing": ["Breathe normally."],
+        "tempo": "up smooth, 1-sec pause, 2-sec down",
+        "range_of_motion": "Full comfortable ankle range."
+      },
+      "common_mistakes": [
+        {
+          "name": "Bouncing",
+          "looks_like": "Quick reps with no control at top or bottom.",
+          "risk": "Less strength stimulus; Achilles irritation.",
+          "fix_cues": ["Pause at the top.", "Lower slowly—control it."]
+        }
+      ],
+      "safety_notes": ["If Achilles feels irritated, slow down and reduce range."],
+      "regressions": ["Smaller range calf raises"],
+      "progressions": ["Single-leg calf raises", "Slow tempo calf raises"],
+      "gemini": {
+        "one_sentence": "Up tall, pause, then lower slowly with control.",
+        "start_prompt": "Calf raises: rise up, pause at the top, and lower slowly—no bouncing.",
+        "mid_rep_corrections": [
+          "Pause at the top—own it.",
+          "Slow on the way down.",
+          "Stay tall—don’t lean."
+        ],
+        "interruption_safe_phrase": "Shake out calves and reset your stance."
+      }
+    },
+    {
+      "id": "superman_hold",
+      "name": "Superman Hold",
+      "modality": "core",
+      "movement": "core",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["lower_back"],
+      "secondary_muscles": ["glutes", "upper_back"],
+      "default_set": { "type": "time", "seconds": 20, "rest_seconds": 30 },
+      "coaching": {
+        "setup": ["Lie face down, arms long overhead.", "Forehead lightly on floor to start."],
+        "cues": [
+          "Lift arms and legs a little—think ‘long’ not ‘high’.",
+          "Squeeze glutes gently and keep neck neutral.",
+          "Lower with control."
+        ],
+        "breathing": ["Small, steady breaths."],
+        "tempo": "steady hold",
+        "range_of_motion": "Small lift with long spine; no pinching."
+      },
+      "common_mistakes": [
+        {
+          "name": "Cranking neck",
+          "looks_like": "Head lifts high; chin juts.",
+          "risk": "Neck strain.",
+          "fix_cues": ["Keep gaze down.", "Imagine length through crown of head."]
+        }
+      ],
+      "safety_notes": ["If low back pinches, reduce lift or swap for bird dog."],
+      "regressions": ["Arms-only lift", "Legs-only lift"],
+      "progressions": ["Swimmers (alternating)", "Longer holds (30 sec)"],
+      "gemini": {
+        "one_sentence": "Lift a little, stay long, neck neutral, and breathe.",
+        "start_prompt": "Superman: tiny lift, long spine, squeeze glutes gently. If you feel pinching, we’ll switch to bird dog.",
+        "mid_rep_corrections": [
+          "Neck neutral—gaze down.",
+          "Smaller lift—stay long.",
+          "Squeeze glutes gently—don’t crank low back."
+        ],
+        "interruption_safe_phrase": "Lower down and take a breath."
+      }
+    },
+    {
+      "id": "step_jack",
+      "name": "Step Jack (Low Impact)",
+      "modality": "cardio",
+      "movement": "cardio",
+      "level": "beginner",
+      "equipment": [],
+      "primary_muscles": ["cardio"],
+      "secondary_muscles": ["calves", "hips"],
+      "default_set": { "type": "time", "seconds": 30, "rest_seconds": 15 },
+      "coaching": {
+        "setup": ["Stand tall, arms relaxed."],
+        "cues": [
+          "Step out to the side as arms reach up.",
+          "Step back in as arms come down—steady rhythm.",
+          "Keep it quiet and smooth."
+        ],
+        "breathing": ["Steady breathing."],
+        "tempo": "rhythmic",
+        "range_of_motion": "Comfortable step width."
+      },
+      "common_mistakes": [
+        {
+          "name": "Rushing",
+          "looks_like": "Choppy steps; shoulders tense.",
+          "risk": "Less sustainable pacing.",
+          "fix_cues": ["Slow to a smooth rhythm.", "Relax shoulders."]
+        }
+      ],
+      "safety_notes": ["Great option if you need low impact or quieter movement."],
+      "regressions": ["Smaller steps"],
+      "progressions": ["Bigger arm reach", "Faster cadence while staying smooth"],
+      "gemini": {
+        "one_sentence": "Step out and in with smooth arms—quiet, low impact cardio.",
+        "start_prompt": "Step jacks: low impact, smooth rhythm, shoulders relaxed. This is your ‘keep moving’ option anytime.",
+        "mid_rep_corrections": [
+          "Smooth rhythm—no rushing.",
+          "Relax shoulders.",
+          "Keep it quiet—soft steps."
+        ],
+        "interruption_safe_phrase": "March in place and breathe."
+      }
+    },
+    {
+      "id": "chair_squat",
+      "name": "Chair Squat (Touch-and-Go)",
+      "modality": "strength",
+      "movement": "squat",
+      "level": "beginner",
+      "equipment": ["chair"],
+      "primary_muscles": ["quads", "glutes"],
+      "secondary_muscles": ["core"],
+      "default_set": { "type": "reps", "reps_min": 8, "reps_max": 12, "rest_seconds": 30 },
+      "coaching": {
+        "setup": ["Stand in front of a chair/bench, feet shoulder-width.", "Arms forward for balance if you like."],
+        "cues": [
+          "Sit back until you lightly touch the chair.",
+          "Don’t fully relax—tap and stand.",
+          "Knees track over toes, heels down."
+        ],
+        "breathing": ["Inhale down.", "Exhale up."],
+        "tempo": "controlled",
+        "range_of_motion": "To chair touch with stable knees and heels down."
+      },
+      "common_mistakes": [
+        {
+          "name": "Plopping onto chair",
+          "looks_like": "Dropping fast and relaxing on the chair.",
+          "risk": "Loss of control; back rounding.",
+          "fix_cues": ["Slow down.", "Just a light touch—stay engaged."]
+        }
+      ],
+      "safety_notes": ["Use a stable chair. If needed, use a higher surface."],
+      "regressions": ["Higher chair squat"],
+      "progressions": ["Air squat (no chair)", "Pause at chair hover (1 sec above chair)"],
+      "gemini": {
+        "one_sentence": "Sit back, tap the chair lightly, and stand—stay in control.",
+        "start_prompt": "Chair squats: sit back to a light tap—don’t plop. Stay engaged and drive up through heels.",
+        "mid_rep_corrections": [
+          "Slow down—stay in control.",
+          "Tap, don’t sit.",
+          "Knees over toes—heels down."
+        ],
+        "interruption_safe_phrase": "Stand tall, reset your stance, and continue."
+      }
+    }
+  ]
+}
