@@ -63,6 +63,7 @@ const statusText = document.getElementById("statusText");
 const consoleContent = document.getElementById("consoleContent");
 const clearConsoleBtn = document.getElementById("clearConsole");
 const showAudioEventsCheckbox = document.getElementById("showAudioEvents");
+const interruptionBanner = document.getElementById("interruptionBanner");
 let currentMessageId = null;
 let currentBubbleElement = null;
 let currentInputTranscriptionId = null;
@@ -71,6 +72,8 @@ let currentOutputTranscriptionId = null;
 let currentOutputTranscriptionElement = null;
 let inputTranscriptionFinished = false; // Track if input transcription is complete for this turn
 let hasOutputTranscriptionInTurn = false; // Track if output transcription delivered the response
+let interruptionCount = 0;
+let interruptionBannerTimer = null;
 
 // Helper function to clean spaces between CJK characters
 // Removes spaces between Japanese/Chinese/Korean characters while preserving spaces around Latin text
@@ -194,6 +197,18 @@ function addConsoleEntry(type, content, data = null, emoji = null, author = null
 
 function clearConsole() {
   consoleContent.innerHTML = '';
+}
+
+function showInterruptionBanner() {
+  if (!interruptionBanner) return;
+  interruptionBanner.classList.remove("hidden");
+  if (interruptionBannerTimer) {
+    clearTimeout(interruptionBannerTimer);
+  }
+  interruptionBannerTimer = setTimeout(() => {
+    interruptionBanner.classList.add("hidden");
+    interruptionBannerTimer = null;
+  }, 3500);
 }
 
 // Clear console button handler
@@ -364,7 +379,8 @@ function connectWebsocket() {
       eventSummary = 'Turn Complete';
       eventEmoji = '✅';
     } else if (adkEvent.interrupted) {
-      eventSummary = 'Interrupted';
+      interruptionCount += 1;
+      eventSummary = `Interrupted (count: ${interruptionCount})`;
       eventEmoji = '⏸️';
     } else if (adkEvent.inputTranscription) {
       // Show transcription text in summary
@@ -500,6 +516,13 @@ function connectWebsocket() {
 
     // Handle interrupted event
     if (adkEvent.interrupted === true) {
+      showInterruptionBanner();
+      addSystemMessage("Safety correction: coach interrupted for immediate feedback.");
+      addConsoleEntry('incoming', 'Interruption detected', {
+        interruptionCount: interruptionCount,
+        reason: 'model interruption event',
+      }, '⏸️', author);
+
       // Stop audio playback if it's playing
       if (audioPlayerNode) {
         audioPlayerNode.port.postMessage({ command: "endOfAudio" });
@@ -720,6 +743,9 @@ function connectWebsocket() {
     console.log("WebSocket connection closed.");
     updateConnectionStatus(false);
     document.getElementById("sendButton").disabled = true;
+    if (isVideoStreaming) {
+      void stopVideoStream(true);
+    }
     if (is_audio || isAudioStarting) {
       void stopAudio(true);
     } else {
@@ -823,147 +849,180 @@ function base64ToArray(base64) {
  */
 
 const cameraButton = document.getElementById("cameraButton");
-const cameraModal = document.getElementById("cameraModal");
 const cameraPreview = document.getElementById("cameraPreview");
-const closeCameraModal = document.getElementById("closeCameraModal");
-const cancelCamera = document.getElementById("cancelCamera");
-const captureImageBtn = document.getElementById("captureImage");
+const videoPreviewPanel = document.getElementById("videoPreviewPanel");
 
-let cameraStream = null;
+const VIDEO_FRAME_INTERVAL_MS = 1000;
+const VIDEO_JPEG_QUALITY = 0.7;
+const VIDEO_COACH_INTERVAL_MS = 10000;
+const VIDEO_DIMENSION_IDEAL = 768;
 
-// Open camera modal and start preview
-async function openCameraPreview() {
-  try {
-    // Request access to the user's webcam
-    cameraStream = await getUserMediaCompat({
-      video: {
-        width: { ideal: 768 },
-        height: { ideal: 768 },
-        facingMode: 'user'
-      }
-    });
+let isVideoStreaming = false;
+let videoStream = null;
+let videoFrameTimer = null;
+let videoCoachTimer = null;
+let videoCanvas = null;
+let videoCtx = null;
+let isFrameEncodeInFlight = false;
+let videoFrameCount = 0;
 
-    // Set the stream to the video element
-    cameraPreview.srcObject = cameraStream;
-
-    // Show the modal
-    cameraModal.classList.add('show');
-
-  } catch (error) {
-    console.error('Error accessing camera:', error);
-    addSystemMessage(`Failed to access camera: ${error.message}`);
-
-    // Log to console
-    addConsoleEntry('error', 'Camera access failed', {
-      error: error.message,
-      name: error.name
-    }, '⚠️', 'system');
-  }
-}
-
-// Close camera modal and stop preview
-function closeCameraPreview() {
-  // Stop the camera stream
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(track => track.stop());
-    cameraStream = null;
-  }
-
-  // Clear the video source
-  cameraPreview.srcObject = null;
-
-  // Hide the modal
-  cameraModal.classList.remove('show');
-}
-
-// Capture image from the live preview
-function captureImageFromPreview() {
-  if (!cameraStream) {
-    addSystemMessage('No camera stream available');
+async function startVideoStream() {
+  if (isVideoStreaming) return;
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+    addSystemMessage("WebSocket is disconnected. Wait for reconnect before starting video.");
     return;
   }
 
   try {
-    // Create canvas to capture the frame
-    const canvas = document.createElement('canvas');
-    canvas.width = cameraPreview.videoWidth;
-    canvas.height = cameraPreview.videoHeight;
-    const context = canvas.getContext('2d');
+    videoStream = await getUserMediaCompat({
+      video: {
+        width: { ideal: VIDEO_DIMENSION_IDEAL },
+        height: { ideal: VIDEO_DIMENSION_IDEAL },
+        facingMode: "user",
+      },
+      audio: false,
+    });
 
-    // Draw current video frame to canvas
-    context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
+    cameraPreview.srcObject = videoStream;
+    await cameraPreview.play();
 
-    // Convert canvas to data URL for display
-    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    if (!videoCanvas) {
+      videoCanvas = document.createElement("canvas");
+    }
+    videoCtx = videoCanvas.getContext("2d");
 
-    // Display the captured image in the chat
-    const imageBubble = createImageBubble(imageDataUrl, true);
-    messagesDiv.appendChild(imageBubble);
-    scrollToBottom();
+    isVideoStreaming = true;
+    videoPreviewPanel.classList.remove("hidden");
+    cameraButton.textContent = "🛑 Stop Video";
 
-    // Convert canvas to blob for sending to server
-    canvas.toBlob((blob) => {
-      // Convert blob to base64 for sending to server
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64data = reader.result.split(',')[1]; // Remove data:image/jpeg;base64, prefix
-        sendImage(base64data);
-      };
-      reader.readAsDataURL(blob);
+    videoFrameTimer = setInterval(sendCurrentVideoFrame, VIDEO_FRAME_INTERVAL_MS);
+    videoCoachTimer = setInterval(sendPeriodicCoachPrompt, VIDEO_COACH_INTERVAL_MS);
+    sendPeriodicCoachPrompt();
 
-      // Log to console
-      addConsoleEntry('outgoing', `Image captured: ${blob.size} bytes (JPEG)`, {
-        size: blob.size,
-        type: 'image/jpeg',
-        dimensions: `${canvas.width}x${canvas.height}`
-      }, '📷', 'user');
-    }, 'image/jpeg', 0.85);
-
-    // Close the camera modal
-    closeCameraPreview();
-
+    addSystemMessage("Video stream started (1 FPS).");
+    addConsoleEntry("outgoing", "Video Stream Started", {
+      fps: 1,
+      imageFormat: "image/jpeg",
+      quality: VIDEO_JPEG_QUALITY,
+      coachIntervalMs: VIDEO_COACH_INTERVAL_MS
+    }, "🎥", "system");
   } catch (error) {
-    console.error('Error capturing image:', error);
-    addSystemMessage(`Failed to capture image: ${error.message}`);
-
-    // Log to console
-    addConsoleEntry('error', 'Image capture failed', {
+    console.error("Error starting video stream:", error);
+    addSystemMessage(`Failed to start video: ${error.message}`);
+    addConsoleEntry("error", "Video stream failed", {
       error: error.message,
       name: error.name
-    }, '⚠️', 'system');
+    }, "⚠️", "system");
+    void stopVideoStream(true);
   }
 }
 
-// Send image to server
-function sendImage(base64Image) {
-  if (websocket && websocket.readyState === WebSocket.OPEN) {
-    const jsonMessage = JSON.stringify({
-      type: "image",
-      data: base64Image,
-      mimeType: "image/jpeg"
-    });
-    websocket.send(jsonMessage);
-    // Trigger a model turn so image-only uploads reliably get feedback.
-    websocket.send(JSON.stringify({
-      type: "text",
-      text: "Analyze this workout photo and give one immediate form correction."
-    }));
-    console.log("[CLIENT TO AGENT] Sent image");
+async function stopVideoStream(silent = false) {
+  isVideoStreaming = false;
+  isFrameEncodeInFlight = false;
+  videoFrameCount = 0;
+
+  if (videoFrameTimer) {
+    clearInterval(videoFrameTimer);
+    videoFrameTimer = null;
+  }
+  if (videoCoachTimer) {
+    clearInterval(videoCoachTimer);
+    videoCoachTimer = null;
+  }
+
+  if (videoStream) {
+    videoStream.getTracks().forEach((track) => track.stop());
+    videoStream = null;
+  }
+
+  if (cameraPreview) {
+    cameraPreview.srcObject = null;
+  }
+
+  videoPreviewPanel.classList.add("hidden");
+  cameraButton.textContent = "🎥 Start Video";
+
+  if (!silent) {
+    addSystemMessage("Video stream stopped.");
+    addConsoleEntry("outgoing", "Video Stream Stopped", {
+      status: "stopped"
+    }, "🛑", "system");
   }
 }
 
-// Event listeners
-cameraButton.addEventListener("click", openCameraPreview);
-closeCameraModal.addEventListener("click", closeCameraPreview);
-cancelCamera.addEventListener("click", closeCameraPreview);
-captureImageBtn.addEventListener("click", captureImageFromPreview);
-
-// Close modal when clicking outside of it
-cameraModal.addEventListener("click", (event) => {
-  if (event.target === cameraModal) {
-    closeCameraPreview();
+function toggleVideoStream() {
+  if (isVideoStreaming) {
+    void stopVideoStream();
+  } else {
+    void startVideoStream();
   }
-});
+}
+
+function sendPeriodicCoachPrompt() {
+  if (!isVideoStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  websocket.send(JSON.stringify({
+    type: "text",
+    text: "Video stream is active. Give one short form correction if needed."
+  }));
+}
+
+function sendCurrentVideoFrame() {
+  if (!isVideoStreaming || !videoStream || !videoCtx || !cameraPreview) return;
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+  if (isFrameEncodeInFlight) return;
+  if (!cameraPreview.videoWidth || !cameraPreview.videoHeight) return;
+
+  isFrameEncodeInFlight = true;
+
+  videoCanvas.width = cameraPreview.videoWidth;
+  videoCanvas.height = cameraPreview.videoHeight;
+  videoCtx.drawImage(cameraPreview, 0, 0, videoCanvas.width, videoCanvas.height);
+
+  videoCanvas.toBlob((blob) => {
+    try {
+      if (!blob || !isVideoStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result;
+        if (typeof dataUrl !== "string") {
+          isFrameEncodeInFlight = false;
+          return;
+        }
+
+        const base64Data = dataUrl.split(",")[1];
+        websocket.send(JSON.stringify({
+          type: "video",
+          data: base64Data,
+          mimeType: "image/jpeg",
+        }));
+
+        videoFrameCount += 1;
+        // throttle console logging to avoid flooding
+        if (videoFrameCount % 10 === 0) {
+          addConsoleEntry("outgoing", "Video frames streaming", {
+            framesSent: videoFrameCount,
+            fps: 1
+          }, "🎞️", "user");
+        }
+        isFrameEncodeInFlight = false;
+      };
+      reader.onerror = () => {
+        isFrameEncodeInFlight = false;
+      };
+      reader.readAsDataURL(blob);
+    } catch (err) {
+      console.warn("Failed to encode/send video frame", err);
+      isFrameEncodeInFlight = false;
+    }
+  }, "image/jpeg", VIDEO_JPEG_QUALITY);
+}
+
+cameraButton.addEventListener("click", toggleVideoStream);
 
 /**
  * Audio handling
@@ -1137,3 +1196,12 @@ async function getUserMediaCompat(constraints) {
     legacyGetUserMedia.call(navigator, constraints, resolve, reject);
   });
 }
+
+window.addEventListener("beforeunload", () => {
+  if (isVideoStreaming) {
+    void stopVideoStream(true);
+  }
+  if (is_audio || isAudioStarting) {
+    void stopAudio(true);
+  }
+});

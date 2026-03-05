@@ -4,13 +4,13 @@ ChaosFit is a real-time workout coaching app built on Google ADK bidirectional s
 It supports:
 - live text chat
 - live microphone input/output
-- camera photo capture + form feedback
+- live video frame streaming for form feedback
 
 ## Tech stack
 - FastAPI + WebSocket
 - Google ADK (`Runner.run_live` + `LiveRequestQueue`)
-- Gemini Live model (native audio)
-- Static frontend (copied/adapted from `bidi-demo`)
+- Gemini Live model (native audio recommended)
+- Static frontend (adapted from `bidi-demo`)
 
 ## Prerequisites
 - Python `>=3.10` (tested with Python 3.11)
@@ -62,12 +62,13 @@ Open:
 Health check:
 - `http://localhost:8000/healthz`
 
-## 4) Use audio + camera
+## 4) Using audio + video streaming
 1. Click `Start Audio` to enable microphone streaming.
-2. Speak naturally; model can respond in audio/text depending on model config.
-3. Click `Camera` to open preview and send an image.
-4. App sends image + follow-up prompt for immediate form feedback.
-5. Click `Stop Audio` to stop mic, then `Start Audio` to restart.
+2. Click `Start Video` to begin continuous camera frame streaming.
+3. While video is active, frames are sent at ~1 FPS (`type: "video"`) and the client sends periodic coaching prompts.
+4. The model provides short form corrections while stream context is active.
+5. Click `Stop Video` to stop camera stream.
+6. Click `Stop Audio` to stop microphone streaming.
 
 ## 5) WebSocket endpoint
 Frontend connects to:
@@ -75,6 +76,45 @@ Frontend connects to:
 
 Example:
 - `ws://localhost:8000/ws/demo-user/demo-session-123`
+
+## Lessons Learned
+
+### FPS and Motion Tracking
+- This ADK Live integration is frame-based visual context, not high-frequency motion tracking.
+- 1 FPS is the preferred default because it gives:
+  - stable end-to-end latency for interactive coaching,
+  - lower bandwidth and token/compute pressure,
+  - fewer browser encode/backpressure issues,
+  - better overall multimodal UX when audio + text + video all run together.
+- Full motion analytics (pose tracking at high temporal resolution) is a separate architecture and requires dedicated CV/pose pipelines beyond this ADK frame-stream flow.
+
+### Model Selection (Bidi Native Audio vs `gemini-2.5-flash`)
+- For this app’s real-time coaching UX, bidi native-audio models are preferred because they support:
+  - true duplex conversational flow,
+  - lower-friction interruption patterns,
+  - better alignment with continuous mic + video stream sessions.
+- `gemini-2.5-flash` remains strong for general generation and fallback testing, but it is not the same real-time voice-first interaction pattern as Live bidi native-audio.
+- Keep `DEMO_AGENT_MODEL` configurable in `.env` for fallback/testing; use a native-audio bidi model for production coaching behavior.
+
+## Interruption QA Protocol
+Run this manual test to confirm natural speech + interruption behavior:
+1. Start the app and confirm websocket shows `Connected`.
+2. Click `Start Audio` and begin speaking a long prompt (for example, describe a full workout plan).
+3. While speaking, switch to risky movement cues (or ask for immediate correction).
+4. Confirm the model issues an interruption event:
+   - red interruption banner appears,
+   - Event Console shows interruption count incrementing,
+   - partial agent output is marked as interrupted,
+   - subsequent correction turn is delivered.
+5. Repeat 3 times in a row without refreshing the page.
+
+## Acceptance Criteria
+- User can talk naturally with continuous turn-taking.
+- Agent can interrupt and provide concise corrective guidance mid-turn.
+- UI visibly signals interruption events.
+- Interruption count is observable in:
+  - frontend Event Console, and
+  - backend logs (`Interruption event ... interrupted_count=<n>`).
 
 ## Troubleshooting
 
@@ -90,11 +130,13 @@ Do not use `main:app` from repo root.
 - Allow browser camera/mic permissions.
 - Prefer latest Chrome/Edge.
 
-### Connected but no model response after image
-The app now auto-sends a follow-up text turn after image upload. If still silent, verify API key/project/model in `.env`.
+### Connected but no model response during video
+- Ensure video is running (`Start Video`) and websocket is connected.
+- Check `.env` credentials/model.
+- Verify periodic coaching messages appear in Event Console.
 
-### Audio events visible in console even with `Show audio` unchecked
-Already fixed in current `app.js`; hard refresh browser (`Cmd+Shift+R`) to load latest JS.
+### Audio events visible in console with `Show audio` unchecked
+Hard refresh browser (`Cmd+Shift+R`) to load latest JS.
 
 ## Repo layout
 - `backend/main.py`: FastAPI app + ADK websocket flow

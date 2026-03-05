@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import binascii
 import base64
 import json
 import logging
@@ -98,6 +99,7 @@ async def websocket_endpoint(
         )
 
     live_request_queue = LiveRequestQueue()
+    interrupted_count = 0
 
     async def upstream_task() -> None:
         while True:
@@ -125,14 +127,22 @@ async def websocket_endpoint(
                 continue
 
             if event_type in {"image", "video"}:
-                raw = base64.b64decode(payload.get("data", ""))
+                try:
+                    raw = base64.b64decode(payload.get("data", ""), validate=True)
+                except (binascii.Error, ValueError):
+                    logger.warning("Skipping malformed %s frame for session_id=%s", event_type, session_id)
+                    continue
                 mime_type = payload.get("mimeType") or payload.get("mime_type") or "image/jpeg"
                 media_blob = types.Blob(mime_type=mime_type, data=raw)
                 live_request_queue.send_realtime(media_blob)
                 continue
 
             if event_type == "audio":
-                raw = base64.b64decode(payload.get("data", ""))
+                try:
+                    raw = base64.b64decode(payload.get("data", ""), validate=True)
+                except (binascii.Error, ValueError):
+                    logger.warning("Skipping malformed audio chunk for session_id=%s", session_id)
+                    continue
                 mime_type = payload.get("mimeType") or payload.get("mime_type") or "audio/pcm;rate=16000"
                 audio_blob = types.Blob(mime_type=mime_type, data=raw)
                 live_request_queue.send_realtime(audio_blob)
@@ -142,12 +152,21 @@ async def websocket_endpoint(
                 return
 
     async def downstream_task() -> None:
+        nonlocal interrupted_count
         async for event in runner.run_live(
             user_id=user_id,
             session_id=session_id,
             live_request_queue=live_request_queue,
             run_config=run_config,
         ):
+            if bool(getattr(event, "interrupted", False)):
+                interrupted_count += 1
+                logger.info(
+                    "Interruption event session_id=%s user_id=%s interrupted_count=%s",
+                    session_id,
+                    user_id,
+                    interrupted_count,
+                )
             await websocket.send_text(event.model_dump_json(exclude_none=True, by_alias=True))
 
     try:

@@ -28,6 +28,10 @@
       </div>
     </header>
 
+    <div id="interruptionBanner" class="interruption-banner hidden">
+      Safety correction issued. Coach interrupted the previous response.
+    </div>
+
     <div class="main-layout">
       <div class="container">
         <div id="messages"></div>
@@ -44,9 +48,14 @@
               />
               <button type="submit" id="sendButton" disabled>Send</button>
               <button type="button" id="startAudioButton">Start Audio</button>
-              <button type="button" id="cameraButton">📷 Camera</button>
+              <button type="button" id="cameraButton">🎥 Start Video</button>
             </div>
           </form>
+        </div>
+
+        <div id="videoPreviewPanel" class="video-preview-panel hidden">
+          <video id="cameraPreview" autoplay playsinline muted></video>
+          <div class="video-preview-label">Live Video Stream</div>
         </div>
       </div>
 
@@ -65,21 +74,5 @@
       </div>
     </div>
 
-    <!-- Camera Preview Modal -->
-    <div id="cameraModal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Camera Preview</h3>
-          <button id="closeCameraModal" class="close-btn">&times;</button>
-        </div>
-        <div class="modal-body">
-          <video id="cameraPreview" autoplay playsinline></video>
-        </div>
-        <div class="modal-footer">
-          <button id="cancelCamera" class="btn-secondary">Cancel</button>
-          <button id="captureImage" class="btn-primary">📷 Send Image</button>
-        </div>
-      </div>
-    </div>
   </body>
 </html>
