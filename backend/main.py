@@ -19,6 +19,7 @@ from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
+from backend.live_agent.session_manager import SessionManager
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -39,6 +40,7 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 session_service = InMemorySessionService()
 runner = Runner(app_name=APP_NAME, agent=agent, session_service=session_service)
+session_manager = SessionManager()
 
 
 @app.get("/healthz")
@@ -98,8 +100,24 @@ async def websocket_endpoint(
             app_name=APP_NAME, user_id=user_id, session_id=session_id
         )
 
+    try:
+        session_manager.start_session(
+            session_id=session_id,
+            parent_id=user_id,
+            time_remaining_sec=None,
+            live_model=str(agent.model),
+        )
+    except Exception:
+        logger.exception("Failed to initialize session manager state; continuing without persistence")
+
     live_request_queue = LiveRequestQueue()
     interrupted_count = 0
+
+    async def send_session_state(status: str, reason: str | None = None) -> None:
+        payload: dict[str, str] = {"type": "session_state", "status": status}
+        if reason:
+            payload["reason"] = reason
+        await websocket.send_text(json.dumps(payload))
 
     async def upstream_task() -> None:
         while True:
@@ -108,6 +126,8 @@ async def websocket_endpoint(
                 return
 
             if "bytes" in message and message["bytes"] is not None:
+                if not session_manager.can_accept_media(session_id):
+                    continue
                 audio_blob = types.Blob(
                     mime_type="audio/pcm;rate=16000",
                     data=message["bytes"],
@@ -120,6 +140,26 @@ async def websocket_endpoint(
 
             payload = json.loads(message["text"])
             event_type = payload.get("type")
+
+            if event_type == "pause":
+                reason = str(payload.get("reason", "manual_pause"))
+                session_manager.pause_session(session_id, reason=reason)
+                await send_session_state("paused", reason=reason)
+                continue
+
+            if event_type == "resume":
+                session_manager.resume_session(session_id)
+                await send_session_state("resumed")
+                continue
+
+            if event_type == "end":
+                session_manager.complete_session(session_id)
+                await send_session_state("ended")
+                live_request_queue.close()
+                return
+
+            if not session_manager.can_accept_media(session_id):
+                continue
 
             if event_type == "text":
                 content = types.Content(parts=[types.Part(text=str(payload.get("text", "")))])
@@ -148,9 +188,6 @@ async def websocket_endpoint(
                 live_request_queue.send_realtime(audio_blob)
                 continue
 
-            if event_type == "end":
-                return
-
     async def downstream_task() -> None:
         nonlocal interrupted_count
         async for event in runner.run_live(
@@ -170,10 +207,15 @@ async def websocket_endpoint(
             await websocket.send_text(event.model_dump_json(exclude_none=True, by_alias=True))
 
     try:
+        await send_session_state("active")
         await asyncio.gather(upstream_task(), downstream_task())
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected user_id=%s session_id=%s", user_id, session_id)
     except Exception:
         logger.exception("Unexpected websocket failure")
     finally:
+        try:
+            session_manager.complete_session(session_id)
+        except Exception:
+            pass
         live_request_queue.close()

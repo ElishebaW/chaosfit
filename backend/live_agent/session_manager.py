@@ -32,6 +32,9 @@ class SessionState:
     started_at: str = field(default_factory=utc_now_iso)
     ended_at: str | None = None
     status: str = "active"
+    pause_reason: str | None = None
+    paused_at: str | None = None
+    resumed_at: str | None = None
     time_remaining_sec: int | None = None
     recent_form_score: float | None = None
     recent_fatigue: float | None = None
@@ -44,7 +47,12 @@ class SessionManager:
         self._mem: dict[str, SessionState] = {}
         project = os.getenv("GOOGLE_CLOUD_PROJECT", "chaos-fit")
         self._project = project
-        self._firestore = firestore.Client(project=project) if firestore else None
+        self._firestore = None
+        if firestore and _env_flag("ENABLE_FIRESTORE", default=False):
+            try:
+                self._firestore = firestore.Client(project=project)
+            except Exception:
+                self._firestore = None
         self._vertex = genai.Client(
             vertexai=True,
             project=project,
@@ -67,7 +75,10 @@ class SessionManager:
             live_model=live_model,
         )
         self._mem[session_id] = state
-        self._upsert_session_doc(state)
+        try:
+            self._upsert_session_doc(state)
+        except Exception:
+            self._firestore = None
         return state
 
     def get(self, session_id: str) -> SessionState:
@@ -90,18 +101,60 @@ class SessionManager:
             return
 
         event = SessionEvent(ts=utc_now_iso(), event_type=event_type, payload=payload)
-        (
-            self._firestore.collection(SESSIONS_COLLECTION)
-            .document(session_id)
-            .collection(EVENTS_SUBCOLLECTION)
-            .add(event.to_dict())
-        )
+        try:
+            (
+                self._firestore.collection(SESSIONS_COLLECTION)
+                .document(session_id)
+                .collection(EVENTS_SUBCOLLECTION)
+                .add(event.to_dict())
+            )
+        except Exception:
+            # Fail-open in local/dev environments where Firestore is not enabled.
+            self._firestore = None
 
     def complete_session(self, session_id: str) -> None:
         state = self.get(session_id)
-        state.status = "completed"
+        if state.status == "ended":
+            return
+        state.status = "ended"
         state.ended_at = utc_now_iso()
+        state.pause_reason = None
         self._upsert_session_doc(state)
+        self.append_event(session_id, "session_state", {"status": "ended"})
+
+    def pause_session(self, session_id: str, *, reason: str = "manual_pause") -> SessionState:
+        state = self.get(session_id)
+        if state.status == "ended":
+            return state
+        state.status = "paused"
+        state.pause_reason = reason
+        state.paused_at = utc_now_iso()
+        self._upsert_session_doc(state)
+        self.append_event(
+            session_id,
+            "session_state",
+            {"status": "paused", "reason": reason, "paused_at": state.paused_at},
+        )
+        return state
+
+    def resume_session(self, session_id: str) -> SessionState:
+        state = self.get(session_id)
+        if state.status == "ended":
+            return state
+        state.status = "active"
+        state.pause_reason = None
+        state.resumed_at = utc_now_iso()
+        self._upsert_session_doc(state)
+        self.append_event(
+            session_id,
+            "session_state",
+            {"status": "resumed", "resumed_at": state.resumed_at},
+        )
+        return state
+
+    def can_accept_media(self, session_id: str) -> bool:
+        state = self.get(session_id)
+        return state.status == "active"
 
     def generate_next_block(self, session_id: str, *, time_remaining_sec: int | None = None) -> dict[str, Any]:
         state = self.get(session_id)
@@ -187,7 +240,11 @@ class SessionManager:
             time_remaining_sec=state.time_remaining_sec,
             live_model=state.live_model,
         )
-        self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(doc.to_dict(), merge=True)
+        try:
+            self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(doc.to_dict(), merge=True)
+        except Exception:
+            # Fail-open if API is disabled or credentials are not configured.
+            self._firestore = None
 
 
 def _as_float(value: Any) -> float | None:
@@ -206,3 +263,10 @@ def _as_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}

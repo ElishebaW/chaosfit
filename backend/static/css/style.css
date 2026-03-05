@@ -117,6 +117,16 @@ h1 {
   letter-spacing: 0.01em;
 }
 
+.session-pause-banner {
+  display: block;
+  background: #7a2e0a;
+  color: #fff;
+  padding: 0.625rem 1rem;
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;

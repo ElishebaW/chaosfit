@@ -64,6 +64,9 @@ const consoleContent = document.getElementById("consoleContent");
 const clearConsoleBtn = document.getElementById("clearConsole");
 const showAudioEventsCheckbox = document.getElementById("showAudioEvents");
 const interruptionBanner = document.getElementById("interruptionBanner");
+const sessionPauseBanner = document.getElementById("sessionPauseBanner");
+const pauseSessionButton = document.getElementById("pauseSessionButton");
+const resumeSessionButton = document.getElementById("resumeSessionButton");
 let currentMessageId = null;
 let currentBubbleElement = null;
 let currentInputTranscriptionId = null;
@@ -74,6 +77,8 @@ let inputTranscriptionFinished = false; // Track if input transcription is compl
 let hasOutputTranscriptionInTurn = false; // Track if output transcription delivered the response
 let interruptionCount = 0;
 let interruptionBannerTimer = null;
+let isSessionPaused = false;
+let currentPauseReason = null;
 
 // Helper function to clean spaces between CJK characters
 // Removes spaces between Japanese/Chinese/Korean characters while preserving spaces around Latin text
@@ -209,6 +214,43 @@ function showInterruptionBanner() {
     interruptionBanner.classList.add("hidden");
     interruptionBannerTimer = null;
   }, 3500);
+}
+
+function setSessionPausedUI(paused, reason = null) {
+  isSessionPaused = paused;
+  currentPauseReason = reason;
+
+  if (paused) {
+    if (audioPlayerNode) {
+      audioPlayerNode.port.postMessage({ command: "endOfAudio" });
+    }
+    sessionPauseBanner.textContent = reason
+      ? `Session paused: ${reason}`
+      : "Session paused.";
+    sessionPauseBanner.classList.remove("hidden");
+    pauseSessionButton.disabled = true;
+    resumeSessionButton.disabled = false;
+    messageInput.disabled = true;
+    document.getElementById("sendButton").disabled = true;
+  } else {
+    sessionPauseBanner.classList.add("hidden");
+    pauseSessionButton.disabled = false;
+    resumeSessionButton.disabled = true;
+    messageInput.disabled = false;
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      document.getElementById("sendButton").disabled = false;
+    }
+  }
+}
+
+function sendControlEvent(type, reason = null) {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+    addSystemMessage("Cannot update session state while disconnected.");
+    return;
+  }
+  const payload = { type };
+  if (reason) payload.reason = reason;
+  websocket.send(JSON.stringify(payload));
 }
 
 // Clear console button handler
@@ -360,6 +402,7 @@ function connectWebsocket() {
 
     // Enable the Send button
     document.getElementById("sendButton").disabled = false;
+    setSessionPausedUI(false);
     addSubmitHandler();
   };
 
@@ -368,6 +411,20 @@ function connectWebsocket() {
     // Parse the incoming ADK Event
     const adkEvent = JSON.parse(event.data);
     console.log("[AGENT TO CLIENT] ", adkEvent);
+
+    if (adkEvent.type === "session_state") {
+      const status = adkEvent.status;
+      if (status === "paused") {
+        setSessionPausedUI(true, adkEvent.reason || "manual");
+      } else if (status === "resumed" || status === "active") {
+        setSessionPausedUI(false);
+      } else if (status === "ended") {
+        setSessionPausedUI(false);
+      }
+      addConsoleEntry("incoming", `Session state: ${status}`, adkEvent, "⏯️", "system");
+      return;
+    }
+
     const isAudioRelatedConsoleEvent = isAudioRelatedEvent(adkEvent);
 
     // Log to console panel
@@ -742,6 +799,7 @@ function connectWebsocket() {
   websocket.onclose = function () {
     console.log("WebSocket connection closed.");
     updateConnectionStatus(false);
+    setSessionPausedUI(false);
     document.getElementById("sendButton").disabled = true;
     if (isVideoStreaming) {
       void stopVideoStream(true);
@@ -811,6 +869,10 @@ function addSubmitHandler() {
 
 // Send a message to the server as JSON
 function sendMessage(message) {
+  if (isSessionPaused) {
+    addSystemMessage("Session is paused. Click Resume Session before sending messages.");
+    return;
+  }
   if (websocket && websocket.readyState == WebSocket.OPEN) {
     const jsonMessage = JSON.stringify({
       type: "text",
@@ -868,6 +930,10 @@ let videoFrameCount = 0;
 
 async function startVideoStream() {
   if (isVideoStreaming) return;
+  if (isSessionPaused) {
+    addSystemMessage("Session is paused. Resume session before starting video.");
+    return;
+  }
   if (!websocket || websocket.readyState !== WebSocket.OPEN) {
     addSystemMessage("WebSocket is disconnected. Wait for reconnect before starting video.");
     return;
@@ -952,6 +1018,10 @@ async function stopVideoStream(silent = false) {
 }
 
 function toggleVideoStream() {
+  if (isSessionPaused) {
+    addSystemMessage("Session is paused. Resume session before changing video state.");
+    return;
+  }
   if (isVideoStreaming) {
     void stopVideoStream();
   } else {
@@ -960,7 +1030,7 @@ function toggleVideoStream() {
 }
 
 function sendPeriodicCoachPrompt() {
-  if (!isVideoStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {
+  if (isSessionPaused || !isVideoStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {
     return;
   }
   websocket.send(JSON.stringify({
@@ -970,7 +1040,7 @@ function sendPeriodicCoachPrompt() {
 }
 
 function sendCurrentVideoFrame() {
-  if (!isVideoStreaming || !videoStream || !videoCtx || !cameraPreview) return;
+  if (isSessionPaused || !isVideoStreaming || !videoStream || !videoCtx || !cameraPreview) return;
   if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
   if (isFrameEncodeInFlight) return;
   if (!cameraPreview.videoWidth || !cameraPreview.videoHeight) return;
@@ -1023,6 +1093,12 @@ function sendCurrentVideoFrame() {
 }
 
 cameraButton.addEventListener("click", toggleVideoStream);
+pauseSessionButton.addEventListener("click", () => {
+  sendControlEvent("pause", "manual_pause");
+});
+resumeSessionButton.addEventListener("click", () => {
+  sendControlEvent("resume");
+});
 
 /**
  * Audio handling
@@ -1126,6 +1202,10 @@ async function stopAudio(silent = false) {
 const startAudioButton = document.getElementById("startAudioButton");
 startAudioButton.addEventListener("click", () => {
   if (isAudioStarting) return;
+  if (isSessionPaused) {
+    addSystemMessage("Session is paused. Resume session before starting audio.");
+    return;
+  }
 
   if (is_audio) {
     void stopAudio();
@@ -1165,7 +1245,7 @@ startAudioButton.addEventListener("click", () => {
 
 // Audio recorder handler
 function audioRecorderHandler(pcmData) {
-  if (websocket && websocket.readyState === WebSocket.OPEN && is_audio) {
+  if (websocket && websocket.readyState === WebSocket.OPEN && is_audio && !isSessionPaused) {
     // Send audio as binary WebSocket frame (more efficient than base64 JSON)
     websocket.send(pcmData);
     console.log("[CLIENT TO AGENT] Sent audio chunk: %s bytes", pcmData.byteLength);

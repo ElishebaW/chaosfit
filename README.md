@@ -77,6 +77,27 @@ Frontend connects to:
 Example:
 - `ws://localhost:8000/ws/demo-user/demo-session-123`
 
+### Session control events
+Client -> server:
+- `{"type":"pause","reason":"manual_pause"}`
+- `{"type":"pause","reason":"baby_cry"}`
+- `{"type":"resume"}`
+- `{"type":"end"}`
+
+Server -> client:
+- `{"type":"session_state","status":"active"}`
+- `{"type":"session_state","status":"paused","reason":"..."}`
+- `{"type":"session_state","status":"resumed"}`
+- `{"type":"session_state","status":"ended"}`
+
+While paused, media and text input are not forwarded to the model until resumed.
+
+## Prompt source of truth
+- Prompt contract lives in `backend/live_agent/form_feedback_prompt.py` (`build_live_system_instruction`).
+- Active ADK agent (`backend/coach_agent/agent.py`) imports and uses that builder.
+- Optional goal override:
+  - `COACH_SESSION_GOAL` in `.env`
+
 ## Lessons Learned
 
 ### FPS and Motion Tracking
@@ -108,6 +129,19 @@ Run this manual test to confirm natural speech + interruption behavior:
    - subsequent correction turn is delivered.
 5. Repeat 3 times in a row without refreshing the page.
 
+## Pause/Resume QA Protocol
+1. Start app and confirm websocket is connected.
+2. Start Audio and Start Video.
+3. Click `Pause Session` and verify:
+   - pause banner appears,
+   - Event Console shows `session_state: paused`,
+   - audio/video/text input is not forwarded.
+4. Click `Resume Session` and verify:
+   - pause banner disappears,
+   - Event Console shows `session_state: resumed`,
+   - audio/video/text forwarding resumes.
+5. Click `Baby Cry Pause` and verify reason is `baby_cry`.
+
 ## Acceptance Criteria
 - User can talk naturally with continuous turn-taking.
 - Agent can interrupt and provide concise corrective guidance mid-turn.
@@ -115,6 +149,8 @@ Run this manual test to confirm natural speech + interruption behavior:
 - Interruption count is observable in:
   - frontend Event Console, and
   - backend logs (`Interruption event ... interrupted_count=<n>`).
+- Session lifecycle controls work without reconnecting websocket:
+  - `active -> paused -> resumed -> ended`.
 
 ## Troubleshooting
 
