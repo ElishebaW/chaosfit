@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChaosFit</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/app.js" type="module"></script>
+  </head>
+
+  <body>
+    <header>
+      <h1>ChaosFit</h1>
+      <div class="subtitle">Workout companion for busy people who want to get fit</div>
+      <div class="header-options">
+        <label class="header-checkbox" title="Enable model to proactively respond without explicit prompts (Native audio models only)">
+          <input type="checkbox" id="enableProactivity">
+          <span>Proactivity</span>
+        </label>
+        <label class="header-checkbox" title="Enable model to detect and adapt to emotional cues (Native audio models only)">
+          <input type="checkbox" id="enableAffectiveDialog">
+          <span>Affective Dialog</span>
+        </label>
+      </div>
+      <div class="connection-status">
+        <span class="status-indicator" id="statusIndicator"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </header>
+
+    <div id="interruptionBanner" class="interruption-banner hidden">
+      Safety correction issued. Coach interrupted the previous response.
+    </div>
+    <div id="sessionPauseBanner" class="session-pause-banner hidden">
+      Session paused.
+    </div>
+
+    <div class="main-layout">
+      <div class="container">
+        <div id="messages"></div>
+
+        <div class="input-container">
+          <form id="messageForm">
+            <div class="input-wrapper">
+              <input
+                type="text"
+                id="message"
+                name="message"
+                placeholder="Type your message here..."
+                autocomplete="off"
+              />
+              <button type="submit" id="sendButton" disabled>Send</button>
+              <button type="button" id="startAudioButton">Start Audio</button>
+              <button type="button" id="cameraButton">🎥 Start Video</button>
+              <button type="button" id="pauseSessionButton">Pause Session</button>
+              <button type="button" id="resumeSessionButton" disabled>Resume Session</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="videoPreviewPanel" class="video-preview-panel hidden">
+          <video id="cameraPreview" autoplay playsinline muted></video>
+          <div class="video-preview-label">Live Video Stream</div>
+        </div>
+      </div>
+
+      <div class="console-panel">
+        <div class="console-header">
+          <h2>Event Console</h2>
+          <div class="console-controls">
+            <label class="console-checkbox">
+              <input type="checkbox" id="showAudioEvents">
+              <span>Show audio</span>
+            </label>
+            <button id="clearConsole" class="console-clear-btn">Clear</button>
+          </div>
+        </div>
+        <div id="consoleContent" class="console-content"></div>
+      </div>
+    </div>
+
+  </body>
+</html>
