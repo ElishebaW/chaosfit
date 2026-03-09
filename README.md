@@ -158,6 +158,40 @@ print(block.voice_script)
 ### Exercise library attribution
 The exercise library and coaching cues are **manually curated** for this demo (common bodyweight movements and typical coaching language). Wording may be **AI-assisted for clarity**, but content is not medical advice; users should stay within pain-free ranges and modify as needed.
 
+## Person 2 — Frontend Experience (Session UI + sketch overlay)
+
+### Components and responsibilities
+- `frontend/src/pages/SessionPage.tsx` connects to `useLiveSession`, renders the webcam preview, drives the timer widget, surfaces transcripts/errors, and pushes exercise history to the backend so Person 3 can query the adaptive scheduler.
+- `frontend/src/components/WebcamFeed.tsx` hosts the `<video>` element and keeps the layout/template that the canvas overlay can paint over.
+- `frontend/src/components/TimerWidget.tsx` exposes countdown vs unknown-time toggles so the UI matches the requested session type.
+
+### Data flow (mermaid diagram)
+```mermaid
+flowchart LR
+  SessionPage["SessionPage (Person 2 UI)"]
+  WebcamFeed["WebcamFeed + overlay canvas"]
+  TimerWidget["TimerWidget (countdown ↔ unknown)"]
+  LiveHook["useLiveSession hook"]
+  WebSocket["WebSocket → FastAPI backend"]
+  Routines["Backend routines + Gemini voice_script"]
+
+  SessionPage --> WebcamFeed
+  SessionPage --> TimerWidget
+  SessionPage --> LiveHook
+  LiveHook --> WebSocket
+  WebSocket --> Routines
+  Routines -->|voice_script + next_block| SessionPage
+  SessionPage -->|history + corrections| WebSocket
+```
+
+### Real-time drawing sketch
+The overlay canvas listens to pointer movement above the webcam preview, records recent pointer positions, and paints a ghost path that mirrors the parent’s motion. When Gemini or the live agent flags form corrections (the UI scans transcripts for keywords), the overlay pulses with a tinted circle to reinforce the correction queue. `SessionPage` exposes the `showSketch` toggle so judges can turn the overlay off for accessibility.
+
+### Integration notes
+- Frontend emits the same session control events described above (`start`, `audio`, `pause`, `resume`, `end`) via `useLiveSession`. `SessionPage` also sends the current `sessionGoal` and the countdown duration (if countdown mode is active) as the session begins so the backend can tailor the routine.
+- The history panel lets you add exercise IDs manually; Person 3 can feed this history into `recommend_next_block` so the routines engine avoids repeats.
+- Corrections highlighted by overlay are derived from Gemini transcripts/errors; if Person 1 wants richer correction metadata (e.g., wrist, knee), add it to the WebSocket payload and expose it via `SessionPage` so the expensive overlay logic can switch stroke colors or draw icons.
+
 ## Lessons Learned
 
 ### FPS and Motion Tracking
