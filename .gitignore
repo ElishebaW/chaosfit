@@ -9,3 +9,9 @@ node_modules/
 .next/
 dist/
 build/
+
+.env
+.venv/
+*.code-workspace
+backend/firestore/ai-security-guardrails.code-workspace
+live-api/
