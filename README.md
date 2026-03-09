@@ -100,6 +100,64 @@ While paused, media and text input are not forwarded to the model until resumed.
 - Optional goal override:
   - `COACH_SESSION_GOAL` in `.env`
 
+## Person 4 — Exercise Intelligence (Routines)
+
+### What this module provides
+- `backend/routines/exercise_library.json`: curated exercise metadata + Gemini-ready coaching lines.
+- `backend/routines/adaptive_scheduler.py`: unknown-time adaptive scheduler (`recommend_next_block`) + resilient history handling.
+- `backend/routines/time_mode_engine.py`: timeboxed routine plans (`generate_timeboxed_routine`) + unknown-time seed (`generate_unknown_time_seed`).
+
+### Where it fits in the architecture (one paragraph)
+The routines module sits between the live session layer and the model: the backend (Person 3) can generate a timeboxed plan (5/12/20 minutes) or, in unknown-time mode, repeatedly request the next adaptive block based on live session signals (fatigue/form/time remaining). Person 1 can pass the returned `voice_script` into the Live coach prompt so Gemini speaks natural exercise setup + mid-rep corrections, while the client logs `exercise_id` + outcomes for reporting.
+
+### Input/output contracts (integration notes)
+- Inputs (unknown-time):
+  - `history: list[str]`: previously completed `exercise_id`s (unknown IDs are ignored).
+  - `AdaptiveContext`: `time_remaining_sec` (optional), `recent_form_score` 0..1 (optional), `recent_fatigue` 0..1 (optional), `prefer_low_impact` (bool), `equipment_available` (tuple of strings).
+- Output (unknown-time):
+  - `NextBlock`: `items` (exercise ids + prescriptions) and `voice_script` (ready to speak).
+- Output (timeboxed):
+  - `RoutinePlan`: ordered blocks with durations + block `voice_script`.
+
+### Current assumptions
+- Supported timeboxed durations: **5 / 12 / 20 minutes**.
+- Unknown-time mode: returns a short block (default ~120s) meant to be called repeatedly until session end.
+- Equipment gating is basic: an exercise is included only if its required equipment is in `equipment_available`.
+
+### Quick usage examples
+
+Generate a 12-minute routine:
+```python
+from backend.routines import generate_timeboxed_routine, RoutinePreferences
+
+plan = generate_timeboxed_routine(12, prefs=RoutinePreferences(prefer_low_impact=True))
+for block in plan.blocks:
+    print(block.mode, block.duration_sec)
+    print(block.voice_script)
+```
+
+Request the next unknown-time block (with history + context):
+```python
+from backend.routines import AdaptiveContext, load_exercise_library, recommend_next_block
+
+library = load_exercise_library()
+history = ["air_squat", "push_up", "unknown_id_from_client"]  # unknown ids are ignored
+ctx = AdaptiveContext(time_remaining_sec=None, recent_form_score=0.6, recent_fatigue=0.7, prefer_low_impact=True)
+block = recommend_next_block(library, history=history, ctx=ctx, block_duration_sec=120)
+print(block.items)
+print(block.voice_script)
+```
+
+### Lessons learned (exercise routine design)
+- Keep the **selection heuristic simple and explainable** (fatigue/form/low-impact) so live coaching remains predictable.
+- Prefer **deterministic rotation** over randomness for demos; it reduces “why did it pick that?” surprises.
+- Treat client input as untrusted: **ignore unknown history IDs** instead of failing mid-session.
+- “Unknown-time” flows work best as **small repeatable blocks** with clear voice scripts, not giant generated plans.
+- Coaching text matters as much as code: **short, concrete cues** reduce latency and improve comprehension.
+
+### Exercise library attribution
+The exercise library and coaching cues are **manually curated** for this demo (common bodyweight movements and typical coaching language). Wording may be **AI-assisted for clarity**, but content is not medical advice; users should stay within pain-free ranges and modify as needed.
+
 ## Lessons Learned
 
 ### FPS and Motion Tracking
