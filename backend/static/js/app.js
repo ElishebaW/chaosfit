@@ -6,11 +6,17 @@
  * WebSocket handling
  */
 
-// Connect the server with a WebSocket connection
+// Connect to server with a WebSocket connection
 const userId = "demo-user";
 const sessionId = "demo-session-" + Math.random().toString(36).substring(7);
 let websocket = null;
 let is_audio = false;
+
+// Initialize event listeners when DOM is ready
+function initializeApp() {
+  setupEventListeners();
+  connectWebsocket();
+}
 
 // Get checkbox elements for RunConfig options
 const enableProactivityCheckbox = document.getElementById("enableProactivity");
@@ -29,9 +35,15 @@ function handleRunConfigChange() {
   }
 }
 
-// Add change listeners to RunConfig checkboxes
-enableProactivityCheckbox.addEventListener("change", handleRunConfigChange);
-enableAffectiveDialogCheckbox.addEventListener("change", handleRunConfigChange);
+// Add change listeners to RunConfig checkboxes (only if elements exist)
+function setupEventListeners() {
+  if (enableProactivityCheckbox) {
+    enableProactivityCheckbox.addEventListener("change", handleRunConfigChange);
+  }
+  if (enableAffectiveDialogCheckbox) {
+    enableAffectiveDialogCheckbox.addEventListener("change", handleRunConfigChange);
+  }
+}
 
 // Build WebSocket URL with RunConfig options as query parameters
 function getWebSocketUrl() {
@@ -60,6 +72,15 @@ const messageInput = document.getElementById("message");
 const messagesDiv = document.getElementById("messages");
 const statusIndicator = document.getElementById("statusIndicator");
 const statusText = document.getElementById("statusText");
+const startSessionButton = document.getElementById("startSession");
+const stopSessionButton = document.getElementById("stopSession");
+const sessionStatusText = document.getElementById("sessionStatus");
+const repCountEl = document.getElementById("repCount");
+const incrementRepButton = document.getElementById("incrementRep");
+const resetRepButton = document.getElementById("resetRep");
+const timerDisplay = document.getElementById("timerDisplay");
+const pauseTimerButton = document.getElementById("pauseTimer");
+const resetTimerButton = document.getElementById("resetTimer");
 const consoleContent = document.getElementById("consoleContent");
 const clearConsoleBtn = document.getElementById("clearConsole");
 const showAudioEventsCheckbox = document.getElementById("showAudioEvents");
@@ -79,6 +100,81 @@ let interruptionCount = 0;
 let interruptionBannerTimer = null;
 let isSessionPaused = false;
 let currentPauseReason = null;
+
+let hudRepCount = 0;
+let hudTimerSeconds = 0;
+let hudTimerInterval = null;
+let hudTimerRunning = false;
+
+function setHudSessionStatus(isLive) {
+  if (!sessionStatusText) return;
+  sessionStatusText.textContent = isLive ? "● LIVE" : "● OFFLINE";
+}
+
+function setHudRepCount(nextCount) {
+  hudRepCount = nextCount;
+  if (repCountEl) repCountEl.textContent = String(hudRepCount);
+}
+
+function formatHudTime(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+
+function setHudTimerSeconds(nextSeconds) {
+  hudTimerSeconds = nextSeconds;
+  if (timerDisplay) timerDisplay.textContent = formatHudTime(hudTimerSeconds);
+}
+
+function startHudTimer() {
+  if (hudTimerInterval) return;
+  hudTimerRunning = true;
+  hudTimerInterval = window.setInterval(() => {
+    if (!hudTimerRunning) return;
+    setHudTimerSeconds(hudTimerSeconds + 1);
+  }, 1000);
+}
+
+function stopHudTimer() {
+  hudTimerRunning = false;
+  if (hudTimerInterval) {
+    window.clearInterval(hudTimerInterval);
+    hudTimerInterval = null;
+  }
+}
+
+async function startHudSession() {
+  if (startSessionButton) startSessionButton.disabled = true;
+  try {
+    await startVideoStream();
+    setHudSessionStatus(true);
+    startHudTimer();
+
+    if (stopSessionButton) stopSessionButton.style.display = "";
+    if (startSessionButton) startSessionButton.style.display = "none";
+  } catch (e) {
+    console.warn("Failed to start session:", e);
+    if (startSessionButton) startSessionButton.disabled = false;
+  }
+}
+
+async function stopHudSession() {
+  try {
+    await stopVideoStream();
+  } catch (e) {
+    console.warn("Failed to stop video:", e);
+  }
+  setHudSessionStatus(false);
+  stopHudTimer();
+  setHudTimerSeconds(0);
+
+  if (startSessionButton) {
+    startSessionButton.style.display = "";
+    startSessionButton.disabled = !(websocket && websocket.readyState === WebSocket.OPEN);
+  }
+  if (stopSessionButton) stopSessionButton.style.display = "none";
+}
 
 // Helper function to clean spaces between CJK characters
 // Removes spaces between Japanese/Chinese/Korean characters while preserving spaces around Latin text
@@ -254,7 +350,49 @@ function sendControlEvent(type, reason = null) {
 }
 
 // Clear console button handler
-clearConsoleBtn.addEventListener('click', clearConsole);
+if (clearConsoleBtn) {
+  clearConsoleBtn.addEventListener('click', clearConsole);
+}
+
+if (startSessionButton) {
+  startSessionButton.addEventListener("click", () => {
+    void startHudSession();
+  });
+}
+
+if (stopSessionButton) {
+  stopSessionButton.addEventListener("click", () => {
+    void stopHudSession();
+  });
+}
+
+if (incrementRepButton) {
+  incrementRepButton.addEventListener("click", () => {
+    setHudRepCount(hudRepCount + 1);
+  });
+}
+
+if (resetRepButton) {
+  resetRepButton.addEventListener("click", () => {
+    setHudRepCount(0);
+  });
+}
+
+if (pauseTimerButton) {
+  pauseTimerButton.addEventListener("click", () => {
+    hudTimerRunning = !hudTimerRunning;
+    pauseTimerButton.textContent = hudTimerRunning ? "PAUSE" : "START";
+    if (hudTimerRunning) {
+      startHudTimer();
+    }
+  });
+}
+
+if (resetTimerButton) {
+  resetTimerButton.addEventListener("click", () => {
+    setHudTimerSeconds(0);
+  });
+}
 
 // Update connection status UI
 function updateConnectionStatus(connected) {
@@ -264,6 +402,10 @@ function updateConnectionStatus(connected) {
   } else {
     statusIndicator.classList.add("disconnected");
     statusText.textContent = "Disconnected";
+  }
+
+  if (startSessionButton && startSessionButton.style.display !== "none") {
+    startSessionButton.disabled = !connected;
   }
 }
 
@@ -392,6 +534,11 @@ function connectWebsocket() {
     console.log("WebSocket connection opened.");
     updateConnectionStatus(true);
     addSystemMessage("Connected to ADK streaming server");
+
+    setHudSessionStatus(false);
+    if (startSessionButton && startSessionButton.style.display !== "none") {
+      startSessionButton.disabled = false;
+    }
 
     // Log to console
     addConsoleEntry('incoming', 'WebSocket Connected', {
@@ -801,9 +948,6 @@ function connectWebsocket() {
     updateConnectionStatus(false);
     setSessionPausedUI(false);
     document.getElementById("sendButton").disabled = true;
-    if (isVideoStreaming) {
-      void stopVideoStream(true);
-    }
     if (is_audio || isAudioStarting) {
       void stopAudio(true);
     } else {
@@ -912,6 +1056,7 @@ function base64ToArray(base64) {
 
 const cameraButton = document.getElementById("cameraButton");
 const cameraPreview = document.getElementById("cameraPreview");
+const cameraPreviewBg = document.getElementById("cameraPreviewBg");
 const videoPreviewPanel = document.getElementById("videoPreviewPanel");
 
 const VIDEO_FRAME_INTERVAL_MS = 1000;
@@ -940,17 +1085,34 @@ async function startVideoStream() {
   }
 
   try {
-    videoStream = await getUserMediaCompat({
-      video: {
-        width: { ideal: VIDEO_DIMENSION_IDEAL },
-        height: { ideal: VIDEO_DIMENSION_IDEAL },
-        facingMode: "user",
-      },
-      audio: false,
-    });
+    try {
+      videoStream = await getUserMediaCompat({
+        video: {
+          width: { ideal: VIDEO_DIMENSION_IDEAL },
+          height: { ideal: VIDEO_DIMENSION_IDEAL },
+          facingMode: "user",
+        },
+        audio: false,
+      });
+    } catch (e) {
+      videoStream = await getUserMediaCompat({
+        video: { facingMode: "user" },
+        audio: false,
+      });
+    }
 
     cameraPreview.srcObject = videoStream;
+    if (cameraPreviewBg) {
+      cameraPreviewBg.srcObject = videoStream;
+    }
     await cameraPreview.play();
+    if (cameraPreviewBg) {
+      try {
+        await cameraPreviewBg.play();
+      } catch (e) {
+        // ignore autoplay issues for the background layer
+      }
+    }
 
     if (!videoCanvas) {
       videoCanvas = document.createElement("canvas");
@@ -1285,3 +1447,10 @@ window.addEventListener("beforeunload", () => {
     void stopAudio(true);
   }
 });
+
+// Initialize app when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
+}

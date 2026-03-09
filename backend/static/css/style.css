@@ -1,18 +1,27 @@
 /**
- * Modern Chat UI Styles for ADK Streaming Demo
+ * CrossFit Athletic UI Styles for ChaosFit
  */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Roboto+Condensed:wght@400;500;700;900&family=Bebas+Neue:wght@400;700&display=swap');
+
 :root {
-  --primary-color: #4285f4;
-  --user-bubble-bg: #4285f4;
-  --agent-bubble-bg: #f1f3f4;
-  --user-text-color: #ffffff;
-  --agent-text-color: #202124;
-  --bg-color: #ffffff;
-  --border-color: #e0e0e0;
-  --input-bg: #f8f9fa;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --primary-color: #ff6b35;
+  --danger-color: #dc2626;
+  --success-color: #16a34a;
+  --accent-color: #ffffff;
+  --bg-dark: #000000;
+  --bg-overlay: rgba(0, 0, 0, 0.8);
+  --border-color: #333333;
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+
+  /* Legacy variables used by existing app.js message bubble CSS further down */
+  --user-bubble-bg: rgba(255, 107, 53, 0.95);
+  --agent-bubble-bg: rgba(17, 17, 17, 0.92);
+  --user-text-color: #0a0a0a;
+  --agent-text-color: #f8fafc;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -22,13 +31,330 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: var(--bg-color);
-  color: #202124;
-  line-height: 1.6;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
   height: 100vh;
+  overflow: hidden;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Athletic Body */
+.athletic-body {
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  position: relative;
+}
+
+/* Connection Status HUD */
+.connection-hud {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: var(--bg-overlay);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--danger-color);
+  box-shadow: 0 0 10px var(--danger-color);
+}
+
+.status-text {
+  font-family: 'Bebas Neue', 'Roboto Condensed', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+/* Main Video Container - Hero */
+.video-container {
+  position: relative;
+  height: 80vh;
+  width: 100%;
+  background: #000000;
+  overflow: hidden;
+}
+
+.hero-video-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  filter: blur(18px) brightness(0.65) saturate(1.1);
+  transform: scale(1.12);
+}
+
+.hero-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: contrast(1.1) saturate(1.2);
+  transform: none;
+  object-position: center 5%;
+  position: relative;
+  z-index: 1;
+}
+
+/* Override legacy ID-based rules so the hero feed isn't constrained to a small box */
+.video-container #cameraPreview {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  display: block;
+  object-fit: contain;
+  object-position: center 5%;
+}
+
+/* HUD Overlays */
+.timer-hud, .rep-counter-hud, .session-status-hud {
+  position: absolute;
+  background: var(--bg-overlay);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--primary-color);
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 15px rgba(255, 107, 53, 0.2);
+}
+
+.timer-hud {
+  top: 24px;
+  right: 24px;
+  z-index: 100;
+}
+
+.rep-counter-hud {
+  top: 24px;
+  left: 24px;
+  z-index: 100;
+}
+
+.session-status-hud {
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+}
+
+.hud-display {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.hud-display span:first-child {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--primary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
+}
+
+.hud-display span:last-child,
+.rep-label,
+.timer-label {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.hud-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.hud-btn {
+  background: var(--primary-color);
+  color: var(--text-primary);
+  border: none;
+  padding: 8px 12px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.hud-btn:hover {
+  background: #e85a2c;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Coaching Footer */
+.coaching-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 20vh;
+  background: linear-gradient(to top, rgba(0,0,0,0.95), rgba(0,0,0,0.85));
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border-color);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+
+.coaching-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.coaching-header h2 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.coaching-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+/* Ensure transcripts are readable inside the dark coaching footer */
+.coaching-footer #messages {
+  padding: 0;
+  max-height: none;
+}
+
+.coaching-footer .message {
+  margin-bottom: 10px;
+}
+
+.coaching-footer .bubble {
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.coaching-footer .message.agent .bubble {
+  background-color: var(--agent-bubble-bg);
+  color: var(--agent-text-color);
+}
+
+.coaching-footer .message.user .bubble {
+  background-color: var(--user-bubble-bg);
+  color: var(--user-text-color);
+}
+
+.legacy-hidden {
+  display: none;
+}
+
+.waiting-message {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  opacity: 0.7;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Session Controls */
+.session-controls {
+  position: fixed;
+  bottom: calc(20vh + 24px);
+  right: 24px;
+  z-index: 200;
+  display: flex;
+  gap: 12px;
+}
+
+.control-btn {
+  background: var(--bg-overlay);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 12px 20px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.control-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.audio-btn {
+  border-color: var(--primary-color);
+}
+
+.session-btn {
+  border-color: var(--success-color);
+}
+
+.stop-btn {
+  border-color: var(--danger-color);
+}
+
+/* Banners */
+.interruption-banner,
+.session-pause-banner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--danger-color);
+  color: var(--text-primary);
+  padding: 16px 24px;
+  border-radius: 8px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  z-index: 2000;
+  box-shadow: 0 8px 30px rgba(220, 38, 38, 0.4);
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.3; }
 }
 
 /* Header */

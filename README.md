@@ -63,12 +63,14 @@ Health check:
 - `http://localhost:8000/healthz`
 
 ## 4) Using audio + video streaming
-1. Click `Start Audio` to enable microphone streaming.
-2. Click `Start Video` to begin continuous camera frame streaming.
-3. While video is active, frames are sent at ~1 FPS (`type: "video"`) and the client sends periodic coaching prompts.
+1. Click `START AUDIO` to enable microphone streaming.
+2. Click `START SESSION` to start the camera preview + begin continuous camera frame streaming.
+3. While the session is active, frames are sent at ~1 FPS (`type: "video"`) and the client sends periodic coaching prompts.
 4. The model provides short form corrections while stream context is active.
-5. Click `Stop Video` to stop camera stream.
-6. Click `Stop Audio` to stop microphone streaming.
+5. Click `END SESSION` to stop camera frame streaming.
+6. Click `STOP AUDIO` to stop microphone streaming.
+
+Note: camera preview is kept running even if the model/websocket reconnects; frame uploads pause automatically until connected.
 
 ## 5) WebSocket endpoint
 Frontend connects to:
