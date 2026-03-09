@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import binascii
 import base64
+import binascii
 import json
 import logging
+import os
 import warnings
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
@@ -21,6 +23,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from backend.live_agent.session_manager import SessionManager
+from backend.reports.report_generator import SessionReportGenerator
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -44,6 +47,56 @@ runner = Runner(app_name=APP_NAME, agent=agent, session_service=session_service)
 session_manager = SessionManager()
 
 
+def _safe_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text else None
+
+
+def _normalize_corrections(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        out: list[str] = []
+        for item in value:
+            entry = _safe_str(item)
+            if entry:
+                out.append(entry)
+        return out
+    single = _safe_str(value)
+    return [single] if single else []
+
+
+def _extract_end_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    summary_block = payload.get("summary")
+    if not isinstance(summary_block, dict):
+        summary_block = {}
+    exercise_type = _safe_str(summary_block.get("exercise_type") or payload.get("exercise_type"))
+    rep_count = _safe_int(summary_block.get("rep_count") or payload.get("rep_count"))
+    session_goal = _safe_str(summary_block.get("session_goal") or payload.get("session_goal"))
+    corrections = _normalize_corrections(
+        summary_block.get("form_corrections") or payload.get("form_corrections")
+    )
+    return {
+        "exercise_type": exercise_type,
+        "rep_count": rep_count,
+        "session_goal": session_goal,
+        "form_corrections": corrections,
+    }
+
+
+
+
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
@@ -57,6 +110,17 @@ async def root() -> FileResponse:
 @app.get("/favicon.ico")
 async def favicon() -> Response:
     return Response(status_code=204)
+
+
+@app.get("/reports/session/{session_id}")
+async def session_report(session_id: str) -> dict[str, Any]:
+    client = session_manager.get_firestore_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="Firestore is not configured")
+    report = SessionReportGenerator(client).to_payload(session_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Session summary not found")
+    return report
 
 
 @app.websocket("/ws/{user_id}/{session_id}")
@@ -163,7 +227,17 @@ async def websocket_endpoint(
                     continue
 
                 if event_type == "end":
+                    summary_payload = _extract_end_summary(payload)
                     session_manager.complete_session(session_id)
+                    session_manager.record_session_summary(
+                        session_id,
+                        user_id=user_id,
+                        exercise_type=summary_payload["exercise_type"],
+                        rep_count=summary_payload["rep_count"],
+                        interruption_count=interrupted_count,
+                        form_corrections=summary_payload["form_corrections"],
+                        session_goal=summary_payload["session_goal"],
+                    )
                     await send_session_state("ended")
                     live_request_queue.close()
                     return

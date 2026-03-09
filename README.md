@@ -94,6 +94,34 @@ Server -> client:
 
 While paused, media and text input are not forwarded to the model until resumed.
 
+## Session summaries & reports
+
+When Firestore is enabled (`ENABLE_FIRESTORE=true` plus valid GCP credentials), the backend saves a `session_summaries/{session_id}` document as soon as the client sends `{"type":"end"}`. You can optionally attach summary metadata in the same payload (or inside a nested `summary` field) to capture:
+
+- `exercise_type`: the focus/movement for the workout (string).
+- `rep_count`: how many reps/segments were completed (integer).
+- `session_goal`: the coaching goal for the workout.
+- `form_corrections`: an array of coaching messages or keywords around form corrections.
+
+The server records these fields together with `user_id`, `session_id`, start/end timestamps, and the total interruption count. Request the report over HTTP:
+
+```
+GET /reports/session/{session_id}
+```
+
+If the document exists, the endpoint returns:
+
+```json
+{
+  "session_id": "...",
+  "user_id": "...",
+  "text_report": "... human-readable summary ...",
+  "details": { ... raw Firestore fields ... }
+}
+```
+
+Feed the `text_report` into Person 5’s summary page, and keep the raw `details` for graphs or playback.
+
 ## Prompt source of truth
 - Prompt contract lives in `backend/live_agent/form_feedback_prompt.py` (`build_live_system_instruction`).
 - Active ADK agent (`backend/coach_agent/agent.py`) imports and uses that builder.
@@ -188,9 +216,9 @@ flowchart LR
 The overlay canvas listens to pointer movement above the webcam preview, records recent pointer positions, and paints a ghost path that mirrors the parent’s motion. When Gemini or the live agent flags form corrections (the UI scans transcripts for keywords), the overlay pulses with a tinted circle to reinforce the correction queue. `SessionPage` exposes the `showSketch` toggle so judges can turn the overlay off for accessibility.
 
 ### Integration notes
-- Frontend emits the same session control events described above (`start`, `audio`, `pause`, `resume`, `end`) via `useLiveSession`. `SessionPage` also sends the current `sessionGoal` and the countdown duration (if countdown mode is active) as the session begins so the backend can tailor the routine.
-- The history panel lets you add exercise IDs manually; Person 3 can feed this history into `recommend_next_block` so the routines engine avoids repeats.
-- Corrections highlighted by overlay are derived from Gemini transcripts/errors; if Person 1 wants richer correction metadata (e.g., wrist, knee), add it to the WebSocket payload and expose it via `SessionPage` so the expensive overlay logic can switch stroke colors or draw icons.
+-- Frontend emits the same session control events described above (`start`, `audio`, `pause`, `resume`, `end`) via `useLiveSession`. `SessionPage` also sends the current `sessionGoal` and the countdown duration (if countdown mode is active) as the session begins so the backend can tailor the routine.
+-- The history panel lets you add exercise IDs manually; Person 3 can feed this history into `recommend_next_block` so the routines engine avoids repeats.
+-- Corrections highlighted by overlay are derived from Gemini transcripts/errors; if Person 1 wants richer correction metadata (e.g., wrist, knee), add it to the WebSocket payload and expose it via `SessionPage` so the expensive overlay logic can switch stroke colors or draw icons.
 
 ## Lessons Learned
 

@@ -12,8 +12,10 @@ from google import genai
 from backend.firestore.schema import (
     EVENTS_SUBCOLLECTION,
     SESSIONS_COLLECTION,
+    SESSION_SUMMARIES_COLLECTION,
     SessionDocument,
     SessionEvent,
+    SessionSummary,
     utc_now_iso,
 )
 from backend.routines import AdaptiveContext, generate_next_unknown_time_block, load_exercise_library
@@ -121,6 +123,35 @@ class SessionManager:
         state.pause_reason = None
         self._upsert_session_doc(state)
         self.append_event(session_id, "session_state", {"status": "ended"})
+
+    def record_session_summary(
+        self,
+        session_id: str,
+        *,
+        user_id: str,
+        exercise_type: str | None = None,
+        rep_count: int | None = None,
+        interruption_count: int = 0,
+        form_corrections: list[str] | None = None,
+        session_goal: str | None = None,
+    ) -> None:
+        state = self.get(session_id)
+        session_goal = session_goal or os.getenv("COACH_SESSION_GOAL")
+        summary = SessionSummary(
+            session_id=session_id,
+            user_id=user_id or state.parent_id,
+            started_at=state.started_at,
+            ended_at=state.ended_at or utc_now_iso(),
+            exercise_type=exercise_type,
+            rep_count=rep_count,
+            interruption_count=interruption_count,
+            form_corrections=tuple(form_corrections or []),
+            session_goal=session_goal,
+        )
+        self._write_summary(summary)
+
+    def get_firestore_client(self):
+        return self._firestore
 
     def pause_session(self, session_id: str, *, reason: str = "manual_pause") -> SessionState:
         state = self.get(session_id)
@@ -244,6 +275,14 @@ class SessionManager:
             self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(doc.to_dict(), merge=True)
         except Exception:
             # Fail-open if API is disabled or credentials are not configured.
+            self._firestore = None
+
+    def _write_summary(self, summary: SessionSummary) -> None:
+        if not self._firestore:
+            return
+        try:
+            self._firestore.collection(SESSION_SUMMARIES_COLLECTION).document(summary.session_id).set(summary.to_dict(), merge=True)
+        except Exception:
             self._firestore = None
 
 
