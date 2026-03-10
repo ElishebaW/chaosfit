@@ -94,9 +94,6 @@ def _extract_end_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "form_corrections": corrections,
     }
 
-
-
-
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
@@ -122,6 +119,47 @@ async def session_report(session_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Session summary not found")
     return report
 
+
+@app.post("/test-exercise-event/{session_id}")
+async def send_test_exercise_event(session_id: str):
+    """Test endpoint to simulate exercise data events"""
+    try:
+        # Simulate an exercise update event
+        session_manager.append_event(
+            session_id=session_id,
+            event_type="exercise_update",
+            payload={
+                "exercise_id": "push_ups",
+                "rep_count": 5,
+                "form_corrections": ["keep back straight", "lower chest more"],
+                "exercise_type": "strength_training"
+            }
+        )
+        return {"status": "success", "message": f"Test exercise data sent to session {session_id}"}
+    except KeyError:
+        return {"status": "error", "message": f"Session {session_id} not found"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/test-end-event/{session_id}")
+async def send_test_end_event(session_id: str):
+    """Test endpoint to simulate proper session end"""
+    try:
+        session_manager.complete_session(session_id)
+        session_manager.record_session_summary(
+            session_id=session_id,
+            user_id="demo-user",
+            exercise_type="push_ups",
+            rep_count=25,
+            interruption_count=2,
+            form_corrections=["keep back straight", "lower chest more"],
+            session_goal="improve push-up form"
+        )
+        return {"status": "success", "message": f"Test end event sent to session {session_id}"}
+    except KeyError:
+        return {"status": "error", "message": f"Session {session_id} not found"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.websocket("/ws/{user_id}/{session_id}")
 async def websocket_endpoint(
@@ -197,6 +235,27 @@ async def websocket_endpoint(
             while True:
                 message = await websocket.receive()
                 if message.get("type") == "websocket.disconnect":
+                    logging.info(f"WebSocket disconnected for session {session_id}, cleaning up session")
+                    try:
+                        state = session_manager.get(session_id)
+                        # Only save summary if session wasn't already properly ended
+                        if state.status != "ended":
+                            session_manager.complete_session(session_id)
+                            # Use tracked exercise data for disconnected sessions
+                            session_manager.record_session_summary(
+                                session_id=session_id,
+                                user_id=user_id,
+                                exercise_type=state.current_exercise or "unknown",
+                                rep_count=state.rep_count,
+                                interruption_count=interrupted_count,
+                                form_corrections=state.form_corrections,
+                                session_goal="session disconnected"
+                            )
+                            logging.info(f"Session {session_id} cleaned up on disconnect with exercise data")
+                        else:
+                            logging.info(f"Session {session_id} already ended, skipping disconnect summary")
+                    except Exception as e:
+                        logging.error(f"Failed to cleanup session {session_id}: {e}")
                     return
 
                 if "bytes" in message and message["bytes"] is not None:
@@ -213,7 +272,18 @@ async def websocket_endpoint(
                     continue
 
                 payload = json.loads(message["text"])
+                logging.info(f"Received event: {payload.get('type')} with payload keys: {list(payload.keys())}")
+                
+                # Check for exercise data in payload
+                exercise_keys = ['exercise_id', 'rep_count', 'form_corrections', 'exercise_type']
+                found_exercise_data = [key for key in exercise_keys if key in payload]
+                if found_exercise_data:
+                    logging.info(f"Exercise update received: {found_exercise_data}")
+                    
                 event_type = payload.get("type")
+                if event_type is None:
+                    logging.warning("Missing event type in payload")
+                    continue
 
                 if event_type == "pause":
                     reason = str(payload.get("reason", "manual_pause"))
@@ -227,8 +297,13 @@ async def websocket_endpoint(
                     continue
 
                 if event_type == "end":
+                    logging.info(f"Processing end event for session {session_id}")
                     summary_payload = _extract_end_summary(payload)
+                    logging.info(f"Session summary extracted: exercise_type={summary_payload.get('exercise_type')}, reps={summary_payload.get('rep_count')}")
+                    
                     session_manager.complete_session(session_id)
+                    logging.info("Session completed, calling record_session_summary")
+                    
                     session_manager.record_session_summary(
                         session_id,
                         user_id=user_id,
@@ -238,6 +313,10 @@ async def websocket_endpoint(
                         form_corrections=summary_payload["form_corrections"],
                         session_goal=summary_payload["session_goal"],
                     )
+                    logging.info("Session summary recorded")
+
+                    # Session summary is already written by session_manager.record_session_summary()
+                    # No need for separate async call
                     await send_session_state("ended")
                     live_request_queue.close()
                     return
@@ -305,6 +384,26 @@ async def websocket_endpoint(
                 user_id,
                 exc,
             )
+            # Clean up session on unexpected termination
+            try:
+                state = session_manager.get(session_id)
+                # Only save summary if session wasn't already properly ended
+                if state.status != "ended":
+                    session_manager.complete_session(session_id)
+                    session_manager.record_session_summary(
+                        session_id=session_id,
+                        user_id=user_id,
+                        exercise_type=state.current_exercise or "unknown",
+                        rep_count=state.rep_count,
+                        interruption_count=interrupted_count,
+                        form_corrections=state.form_corrections,
+                        session_goal="session terminated unexpectedly"
+                    )
+                    logger.info(f"Session {session_id} cleaned up after unexpected termination with exercise data")
+                else:
+                    logger.info(f"Session {session_id} already ended, skipping unexpected termination summary")
+            except Exception as cleanup_exc:
+                logger.error(f"Failed to cleanup session {session_id}: {cleanup_exc}")
             return
 
     try:

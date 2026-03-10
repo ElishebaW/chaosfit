@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -41,6 +42,9 @@ class SessionState:
     recent_form_score: float | None = None
     recent_fatigue: float | None = None
     exercise_history: list[str] = field(default_factory=list)
+    current_exercise: str | None = None
+    rep_count: int = 0
+    form_corrections: list[str] = field(default_factory=list)
     live_model: str = "unknown"
 
 
@@ -53,10 +57,14 @@ class SessionManager:
         if firestore and _env_flag("ENABLE_FIRESTORE", default=False):
             try:
                 self._firestore = firestore.Client(project=project)
-            except Exception:
+                logging.info(f"Firestore client initialized for project: {project}")
+            except Exception as e:
+                logging.error(f"Failed to initialize Firestore client: {e}")
                 self._firestore = None
+        else:
+            logging.warning("Firestore disabled or library not available")
         self._vertex = genai.Client(
-            vertexai=True,
+            vertexai=os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() == "true",
             project=project,
             location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"),
         )
@@ -90,8 +98,21 @@ class SessionManager:
 
     def append_event(self, session_id: str, event_type: str, payload: dict[str, Any]) -> None:
         state = self.get(session_id)
+        
+        # Track exercise data
         if "exercise_id" in payload and isinstance(payload["exercise_id"], str):
-            state.exercise_history.append(payload["exercise_id"])
+            exercise_id = payload["exercise_id"]
+            state.exercise_history.append(exercise_id)
+            state.current_exercise = exercise_id
+            
+        if "rep_count" in payload:
+            state.rep_count += _as_int(payload.get("rep_count")) or 0
+            
+        if "form_corrections" in payload:
+            corrections = payload.get("form_corrections")
+            if isinstance(corrections, list):
+                state.form_corrections.extend([str(c) for c in corrections])
+                
         if "form_score" in payload:
             state.recent_form_score = _as_float(payload.get("form_score"))
         if "fatigue" in payload:
@@ -104,13 +125,15 @@ class SessionManager:
 
         event = SessionEvent(ts=utc_now_iso(), event_type=event_type, payload=payload)
         try:
-            (
+            result = (
                 self._firestore.collection(SESSIONS_COLLECTION)
                 .document(session_id)
                 .collection(EVENTS_SUBCOLLECTION)
                 .add(event.to_dict())
             )
-        except Exception:
+            logging.info(f"Event written to Firestore: {event_type} for session {session_id}")
+        except Exception as e:
+            logging.error(f"Failed to write event to Firestore: {e}")
             # Fail-open in local/dev environments where Firestore is not enabled.
             self._firestore = None
 
@@ -272,8 +295,10 @@ class SessionManager:
             live_model=state.live_model,
         )
         try:
-            self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(doc.to_dict(), merge=True)
-        except Exception:
+            result = self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(doc.to_dict(), merge=True)
+            logging.info(f"Session document upserted: {state.session_id}")
+        except Exception as e:
+            logging.error(f"Failed to upsert session document: {e}")
             # Fail-open if API is disabled or credentials are not configured.
             self._firestore = None
 
@@ -281,8 +306,10 @@ class SessionManager:
         if not self._firestore:
             return
         try:
-            self._firestore.collection(SESSION_SUMMARIES_COLLECTION).document(summary.session_id).set(summary.to_dict(), merge=True)
-        except Exception:
+            result = self._firestore.collection(SESSION_SUMMARIES_COLLECTION).document(summary.session_id).set(summary.to_dict(), merge=True)
+            logging.info(f"Session summary written: {summary.session_id}")
+        except Exception as e:
+            logging.error(f"Failed to write session summary: {e}")
             self._firestore = None
 
 

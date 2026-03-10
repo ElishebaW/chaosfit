@@ -44,7 +44,11 @@ class GeminiLiveClient:
             output_voice=os.getenv("LIVE_OUTPUT_VOICE", "Aoede"),
         )
         self.config = cfg
-        self.client = genai.Client(vertexai=True, project=cfg.project, location=cfg.location)
+        self.client = genai.Client(
+            vertexai=os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() == "true",
+            project=cfg.project,
+            location=cfg.location,
+        )
 
     @staticmethod
     def _normalize_model_name(name: str) -> str:

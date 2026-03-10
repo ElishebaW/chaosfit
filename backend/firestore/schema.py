@@ -5,12 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
-
+from google.cloud import firestore
 
 SESSIONS_COLLECTION = "live_sessions"
 EVENTS_SUBCOLLECTION = "events"
 SESSION_SUMMARIES_COLLECTION = "session_summaries"
-
 
 @dataclass(frozen=True)
 class SessionDocument:
@@ -95,6 +94,19 @@ class SessionSummary:
             created_at=str(data.get("created_at") or utc_now_iso()),
         )
 
+
+async def save_session(db: firestore.AsyncClient, session_id: str, user_id: str, session_data: dict):
+    doc_ref = db.collection(SESSION_SUMMARIES_COLLECTION).document(session_id)
+    await doc_ref.set({
+        "user_id": user_id,
+        "session_id": session_id,
+        "exercise_type": session_data.get("exercise_type"),
+        "rep_count": session_data.get("rep_count", 0),
+        "interruption_count": session_data.get("interruption_count", 0),
+        "form_corrections": session_data.get("form_corrections", []),
+        "start_time": session_data.get("start_time"),
+        "end_time": firestore.SERVER_TIMESTAMP,
+    })
 
 def _safe_int(value: Any) -> int | None:
     if value is None:
