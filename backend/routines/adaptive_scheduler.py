@@ -153,6 +153,17 @@ def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, x))
 
 
+def sanitize_history(library: ExerciseLibrary, history: list[str]) -> list[str]:
+    """
+    Guards against stale/invalid exercise IDs coming from clients.
+    Unknown IDs are ignored to keep demo sessions resilient.
+    """
+    if not history:
+        return []
+    known = set(library.ids())
+    return [h for h in history if h in known]
+
+
 def _pick_candidate_ids(
     library: ExerciseLibrary,
     *,
@@ -180,7 +191,7 @@ def choose_next_exercise_id(
     allow_modality: set[str] | None = None,
     allow_movement: set[str] | None = None,
 ) -> str:
-    history = history or []
+    history = sanitize_history(library, history or [])
     ctx = ctx or AdaptiveContext()
 
     equipment = set(ctx.equipment_available)
@@ -252,7 +263,7 @@ def recommend_next_block(
     """
     Unknown-time mode: returns a short block (~2 minutes) that can be repeated until the session ends.
     """
-    history = history or []
+    history = sanitize_history(library, history or [])
     ctx = ctx or AdaptiveContext()
 
     # Simple 2-item alternating block: one strength/control + one cardio/core.
