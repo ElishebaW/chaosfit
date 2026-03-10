@@ -42,7 +42,7 @@ cd /Users/elishebawiggins/projects/chaosfit
 uv sync
 ```
 
-Or using pip/venv:
+Or using pip/venv: 
 ```bash
 cd /Users/elishebawiggins/projects/chaosfit
 python3 -m venv .venv
@@ -176,13 +176,6 @@ print(block.items)
 print(block.voice_script)
 ```
 
-### Lessons learned (exercise routine design)
-- Keep the **selection heuristic simple and explainable** (fatigue/form/low-impact) so live coaching remains predictable.
-- Prefer **deterministic rotation** over randomness for demos; it reduces “why did it pick that?” surprises.
-- Treat client input as untrusted: **ignore unknown history IDs** instead of failing mid-session.
-- “Unknown-time” flows work best as **small repeatable blocks** with clear voice scripts, not giant generated plans.
-- Coaching text matters as much as code: **short, concrete cues** reduce latency and improve comprehension.
-
 ### Exercise library attribution
 The exercise library and coaching cues are **manually curated** for this demo (common bodyweight movements and typical coaching language). Wording may be **AI-assisted for clarity**, but content is not medical advice; users should stay within pain-free ranges and modify as needed.
 
@@ -246,6 +239,12 @@ The overlay canvas listens to pointer movement above the webcam preview, records
 - **Data Flow**: Frontend detects exercise → sends `exercise_update` event → backend tracks in session state → `end` event sends summary → Firestore saves. Any break in this chain results in "unknown" exercise data.
 - **Virtual Environment**: Use `uv` or dedicated venv to avoid dependency conflicts. System Python may have different package versions causing import issues.
 
+## Exercise Routine Design
+- Keep the **selection heuristic simple and explainable** (fatigue/form/low-impact) so live coaching remains predictable.
+- Prefer **deterministic rotation** over randomness for demos; it reduces “why did it pick that?” surprises.
+- Treat client input as untrusted: **ignore unknown history IDs** instead of failing mid-session.
+- “Unknown-time” flows work best as **small repeatable blocks** with clear voice scripts, not giant generated plans.
+- Coaching text matters as much as code: **short, concrete cues** reduce latency and improve comprehension.
 ### Debugging Session Data Issues
 - Check logs for "Exercise update received" vs "Session summary extracted" to verify data flow
 - Verify exercise library names match detection patterns exactly
