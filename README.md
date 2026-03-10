@@ -42,7 +42,7 @@ cd /Users/elishebawiggins/projects/chaosfit
 uv sync
 ```
 
-Or using pip/venv:
+Or using pip/venv: 
 ```bash
 cd /Users/elishebawiggins/projects/chaosfit
 python3 -m venv .venv
@@ -176,13 +176,6 @@ print(block.items)
 print(block.voice_script)
 ```
 
-### Lessons learned (exercise routine design)
-- Keep the **selection heuristic simple and explainable** (fatigue/form/low-impact) so live coaching remains predictable.
-- Prefer **deterministic rotation** over randomness for demos; it reduces “why did it pick that?” surprises.
-- Treat client input as untrusted: **ignore unknown history IDs** instead of failing mid-session.
-- “Unknown-time” flows work best as **small repeatable blocks** with clear voice scripts, not giant generated plans.
-- Coaching text matters as much as code: **short, concrete cues** reduce latency and improve comprehension.
-
 ### Exercise library attribution
 The exercise library and coaching cues are **manually curated** for this demo (common bodyweight movements and typical coaching language). Wording may be **AI-assisted for clarity**, but content is not medical advice; users should stay within pain-free ranges and modify as needed.
 
@@ -232,12 +225,31 @@ The overlay canvas listens to pointer movement above the webcam preview, records
 - Full motion analytics (pose tracking at high temporal resolution) is a separate architecture and requires dedicated CV/pose pipelines beyond this ADK frame-stream flow.
 
 ### Model Selection (Bidi Native Audio vs `gemini-2.5-flash`)
-- For this app’s real-time coaching UX, bidi native-audio models are preferred because they support:
+- For this app's real-time coaching UX, bidi native-audio models are preferred because they support:
   - true duplex conversational flow,
   - lower-friction interruption patterns,
   - better alignment with continuous mic + video stream sessions.
 - `gemini-2.5-flash` remains strong for general generation and fallback testing, but it is not the same real-time voice-first interaction pattern as Live bidi native-audio.
 - Keep `DEMO_AGENT_MODEL` configurable in `.env` for fallback/testing; use a native-audio bidi model for production coaching behavior.
+
+### Firestore Setup & Exercise Tracking
+- **Environment Setup**: Firestore requires `GOOGLE_CLOUD_PROJECT` and `ENABLE_FIRESTORE=true` in `.env`. Authentication works automatically with `gcloud auth login` or service account credentials.
+- **Session Summary Race Conditions**: Multiple cleanup handlers (disconnect, exception, normal end) can overwrite session summaries. Always check `session.status != "ended"` before saving to prevent overwriting properly ended sessions.
+- **Exercise Detection**: Frontend patterns must match exact exercise library IDs (e.g., `push_up` not `push-ups`, `air_squat` not `squats`). Coach uses library `start_prompt` phrases for detection.
+- **Data Flow**: Frontend detects exercise → sends `exercise_update` event → backend tracks in session state → `end` event sends summary → Firestore saves. Any break in this chain results in "unknown" exercise data.
+- **Virtual Environment**: Use `uv` or dedicated venv to avoid dependency conflicts. System Python may have different package versions causing import issues.
+
+## Exercise Routine Design
+- Keep the **selection heuristic simple and explainable** (fatigue/form/low-impact) so live coaching remains predictable.
+- Prefer **deterministic rotation** over randomness for demos; it reduces “why did it pick that?” surprises.
+- Treat client input as untrusted: **ignore unknown history IDs** instead of failing mid-session.
+- “Unknown-time” flows work best as **small repeatable blocks** with clear voice scripts, not giant generated plans.
+- Coaching text matters as much as code: **short, concrete cues** reduce latency and improve comprehension.
+### Debugging Session Data Issues
+- Check logs for "Exercise update received" vs "Session summary extracted" to verify data flow
+- Verify exercise library names match detection patterns exactly
+- Look for multiple "Session summary written" entries indicating overwrites
+- Use Firestore console to verify actual saved data vs expected data
 
 ## Interruption QA Protocol
 Run this manual test to confirm natural speech + interruption behavior:

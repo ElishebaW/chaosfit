@@ -97,6 +97,12 @@ let currentOutputTranscriptionElement = null;
 let inputTranscriptionFinished = false; // Track if input transcription is complete for this turn
 let hasOutputTranscriptionInTurn = false; // Track if output transcription delivered the response
 let interruptionCount = 0;
+
+// Exercise tracking variables
+let currentExercise = null;
+let exerciseRepCount = 0;
+let formCorrections = [];
+let sessionGoal = null;
 let interruptionBannerTimer = null;
 let isSessionPaused = false;
 let currentPauseReason = null;
@@ -161,13 +167,37 @@ async function startHudSession() {
 
 async function stopHudSession() {
   try {
+    // Always send session end event with current exercise data (even if none)
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      sendSessionEnd();
+    }
+    
     await stopVideoStream();
   } catch (e) {
-    console.warn("Failed to stop video:", e);
+    console.warn("Failed to stop video stream:", e);
   }
-  setHudSessionStatus(false);
-  stopHudTimer();
+
+  // Reset exercise tracking
+  currentExercise = null;
+  exerciseRepCount = 0;
+  formCorrections = [];
+  sessionGoal = null;
+  
+  // Reset session status display
+  if (sessionStatusText) {
+    sessionStatusText.textContent = "● READY";
+  }
+
+  hudTimerRunning = false;
+  if (hudTimerInterval) {
+    clearInterval(hudTimerInterval);
+    hudTimerInterval = null;
+  }
+  hudRepCount = 0;
+  hudTimerSeconds = 0;
+  setHudRepCount(0);
   setHudTimerSeconds(0);
+  setHudSessionStatus(false);
 
   if (startSessionButton) {
     startSessionButton.style.display = "";
@@ -368,13 +398,27 @@ if (stopSessionButton) {
 
 if (incrementRepButton) {
   incrementRepButton.addEventListener("click", () => {
-    setHudRepCount(hudRepCount + 1);
+    // Use new exercise tracking if exercise is active, otherwise use HUD counter
+    if (currentExercise) {
+      incrementExerciseReps();
+    } else {
+      setHudRepCount(hudRepCount + 1);
+    }
   });
 }
 
 if (resetRepButton) {
   resetRepButton.addEventListener("click", () => {
-    setHudRepCount(0);
+    // Reset exercise tracking if exercise is active, otherwise use HUD counter
+    if (currentExercise) {
+      exerciseRepCount = 0;
+      sendExerciseUpdate({ repCount: 0 });
+      if (repCountEl) {
+        repCountEl.textContent = "0";
+      }
+    } else {
+      setHudRepCount(0);
+    }
   });
 }
 
@@ -830,6 +874,15 @@ function connectWebsocket() {
       const isFinished = adkEvent.outputTranscription.finished;
       hasOutputTranscriptionInTurn = true;
 
+      // Auto-detect exercises and reps from AI speech
+      if (transcriptionText) {
+        detectExerciseType(transcriptionText);
+        if (currentExercise) {
+          detectFormCorrections(transcriptionText);
+          detectRepCounting(transcriptionText);
+        }
+      }
+
       if (transcriptionText) {
         // Finalize any active input transcription when server starts responding
         if (currentInputTranscriptionId != null && currentOutputTranscriptionId == null) {
@@ -919,6 +972,17 @@ function connectWebsocket() {
           // delivered the response (prevents duplicate thinking text replay)
           if (!adkEvent.partial && hasOutputTranscriptionInTurn) {
             continue;
+          }
+
+          // Detect form corrections in AI coach responses
+          if (currentExercise && part.text) {
+            detectFormCorrections(part.text);
+            detectRepCounting(part.text);
+          }
+          
+          // Auto-detect exercises from AI coach responses (even if no exercise is active)
+          if (part.text) {
+            detectExerciseType(part.text);
           }
 
           // Add a new message bubble for a new turn
@@ -1027,6 +1091,192 @@ function sendMessage(message) {
     // Log to console panel
     addConsoleEntry('outgoing', 'User Message: ' + message, null, '💬', 'user');
   }
+}
+
+// Exercise tracking functions
+function sendExerciseUpdate(exerciseData) {
+  if (isSessionPaused || !websocket || websocket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  
+  const exerciseEvent = {
+    type: "exercise_update",
+    exercise_id: exerciseData.exerciseId || currentExercise,
+    rep_count: exerciseData.repCount || exerciseRepCount,
+    form_corrections: exerciseData.formCorrections || formCorrections,
+    exercise_type: exerciseData.exerciseType || currentExercise
+  };
+  
+  websocket.send(JSON.stringify(exerciseEvent));
+  addConsoleEntry('outgoing', 'Exercise Update', exerciseEvent, '🏋️', 'user');
+}
+
+function sendSessionEnd() {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  
+  const endEvent = {
+    type: "end",
+    summary: {
+      exercise_type: currentExercise || "unknown",
+      rep_count: exerciseRepCount || 0,
+      form_corrections: formCorrections || [],
+      session_goal: sessionGoal || "complete workout"
+    }
+  };
+  
+  websocket.send(JSON.stringify(endEvent));
+  addConsoleEntry('outgoing', 'Session End', endEvent, '🏁', 'user');
+}
+
+function startExercise(exerciseType, goal = null) {
+  currentExercise = exerciseType;
+  exerciseRepCount = 0;
+  formCorrections = [];
+  sessionGoal = goal;
+  
+  sendExerciseUpdate({
+    exerciseId: exerciseType,
+    exerciseType: exerciseType,
+    repCount: 0,
+    formCorrections: []
+  });
+  
+  // Update session status display
+  if (sessionStatusText) {
+    sessionStatusText.textContent = `● ${exerciseType.toUpperCase()}`;
+  }
+  
+  addSystemMessage(`Started exercise: ${exerciseType}`);
+}
+
+function incrementExerciseReps() {
+  exerciseRepCount++;
+  sendExerciseUpdate({
+    repCount: exerciseRepCount
+  });
+  
+  // Update UI rep counter if exists
+  if (repCountEl) {
+    repCountEl.textContent = exerciseRepCount;
+  }
+}
+
+function addFormCorrection(correction) {
+  formCorrections.push(correction);
+  sendExerciseUpdate({
+    formCorrections: formCorrections
+  });
+}
+
+function detectFormCorrections(text) {
+  // Common form correction patterns
+  const correctionPatterns = [
+    /keep your (back|chest|head|neck) (straight|flat|aligned|neutral)/gi,
+    /lower your (chest|hips|body)/gi,
+    /raise your (hips|chest|head)/gi,
+    /bend your (knees|elbows) (more|less)/gi,
+    /straighten your (back|arms|legs)/gi,
+    /engage your (core|abs|glutes)/gi,
+    /don't (round|arch) your (back|lower back)/gi,
+    /maintain (proper|good) form/gi,
+    /form check/gi
+  ];
+  
+  for (const pattern of correctionPatterns) {
+    if (pattern.test(text)) {
+      // Extract the correction phrase
+      const match = text.match(pattern)[0];
+      const correction = match.toLowerCase();
+      
+      // Avoid duplicates
+      if (!formCorrections.includes(correction)) {
+        addFormCorrection(correction);
+        addSystemMessage(`Form correction noted: ${correction}`);
+      }
+      break; // Only take one correction per message to avoid spam
+    }
+  }
+}
+
+function detectExerciseType(text) {
+  // Exercise detection patterns - match actual exercise library names and common phrases
+  // More specific patterns first to avoid conflicts
+  const exercisePatterns = [
+    { exercise: 'mountain_climber', patterns: [/mountain.?climber/gi] },
+    { exercise: 'side_plank', patterns: [/side.?plank/gi] },
+    { exercise: 'push_up', patterns: [/push.?up/gi, /pushup/gi, /push.?ups?/gi] },
+    { exercise: 'air_squat', patterns: [/squat/gi, /squatting/gi, /air.?squat/gi, /air squat/gi] },
+    { exercise: 'plank', patterns: [/plank/gi, /planking/gi, /plank.?hold/gi, /front.?plank/gi] },
+    { exercise: 'jumping_jack', patterns: [/jumping.?jack/gi, /jumping jack/gi] },
+    { exercise: 'reverse_lunge', patterns: [/lunge/gi, /lunging/gi, /reverse.?lunge/gi] },
+    { exercise: 'dead_bug', patterns: [/dead.?bug/gi] },
+    { exercise: 'bird_dog', patterns: [/bird.?dog/gi] },
+    { exercise: 'good_morning', patterns: [/good.?morning/gi, /hip.?hinge/gi] },
+    { exercise: 'glute_bridge', patterns: [/glute.?bridge/gi, /bridge/gi] },
+    { exercise: 'wall_sit', patterns: [/wall.?sit/gi] },
+    { exercise: 'calf_raise', patterns: [/calf.?raise/gi] },
+    { exercise: 'superman_hold', patterns: [/superman/gi] },
+    { exercise: 'step_jack', patterns: [/step.?jack/gi] },
+    { exercise: 'chair_squat', patterns: [/chair.?squat/gi] }
+  ];
+  
+  for (const { exercise, patterns } of exercisePatterns) {
+    for (const pattern of patterns) {
+      if (pattern.test(text)) {
+        // Only start new exercise if different from current
+        if (currentExercise !== exercise) {
+          startExercise(exercise, `coach-guided ${exercise.replace('_', ' ')}`);
+          addSystemMessage(`Exercise detected from coach: ${exercise.replace('_', ' ').toUpperCase()}`);
+          return true;
+        }
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+function detectRepCounting(text) {
+  if (!currentExercise) return false;
+  
+  // Rep counting patterns - what coaches might say
+  const repPatterns = [
+    /that(?:'s| is)? (\d+)/gi,
+    /good (\d+)/gi,
+    /nice (\d+)/gi,
+    /great (\d+)/gi,
+    /perfect (\d+)/gi,
+    /(\d+) (reps?|more)/gi,
+    /rep (\d+)/gi,
+    /you did (\d+)/gi,
+    /you have (\d+)/gi,
+    /that was (\d+)/gi,
+    /(\d+) (was|were) good/gi,
+    /let's do (\d+)/gi,
+    /do (\d+) more/gi
+  ];
+  
+  for (const pattern of repPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const repCount = parseInt(match[1]);
+      if (repCount > 0 && repCount !== exerciseRepCount) {
+        exerciseRepCount = repCount;
+        sendExerciseUpdate({ repCount: exerciseRepCount });
+        
+        // Update UI
+        if (repCountEl) {
+          repCountEl.textContent = exerciseRepCount;
+        }
+        
+        addSystemMessage(`Rep count updated: ${exerciseRepCount}`);
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // Decode Base64 data to Array
