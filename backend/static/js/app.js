@@ -177,6 +177,14 @@ async function stopHudSession() {
     console.warn("Failed to stop video stream:", e);
   }
 
+  // Redirect to post-session summary screen.
+  // Session ID is part of the WebSocket URL (/ws/{user_id}/{session_id}) and is available in this module.
+  try {
+    window.location.href = `/summary?session_id=${encodeURIComponent(sessionId)}`;
+  } catch (e) {
+    // Fall through to local UI reset if navigation fails.
+  }
+
   // Reset exercise tracking
   currentExercise = null;
   exerciseRepCount = 0;
