@@ -139,6 +139,11 @@ async def root() -> FileResponse:
     return FileResponse(static_dir / "index.html")
 
 
+@app.get("/summary")
+async def summary_page() -> FileResponse:
+    return FileResponse(static_dir / "summary.html")
+
+
 @app.get("/favicon.ico")
 async def favicon() -> Response:
     return Response(status_code=204)

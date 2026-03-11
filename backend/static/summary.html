@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChaosFit - Session Summary</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <style>
+      :root {
+        --summary-bg: #0a0a0a;
+        --summary-panel: rgba(0, 0, 0, 0.65);
+        --summary-border: rgba(255, 69, 0, 0.35);
+        --summary-accent: #ff4500;
+        --summary-muted: #b8b8b8;
+      }
+
+      body {
+        background: radial-gradient(1200px 600px at 50% 15%, rgba(255, 69, 0, 0.12), transparent 60%),
+          linear-gradient(135deg, #0a0a0a 0%, #000 100%);
+        overflow: auto;
+        height: auto;
+        min-height: 100vh;
+      }
+
+      .summary-shell {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 36px 20px 56px;
+      }
+
+      .summary-header {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .summary-title {
+        font-family: 'Bebas Neue', 'Roboto Condensed', sans-serif;
+        font-size: 44px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-primary);
+      }
+
+      .summary-subtitle {
+        color: var(--summary-muted);
+        font-family: 'Roboto Condensed', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 12px;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+        margin-top: 18px;
+      }
+
+      .panel {
+        background: var(--summary-panel);
+        border: 1px solid var(--summary-border);
+        border-radius: 12px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(10px);
+        padding: 18px;
+      }
+
+      .stat {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .stat-number {
+        font-family: 'Bebas Neue', sans-serif;
+        font-size: 56px;
+        line-height: 1;
+        color: var(--summary-accent);
+        letter-spacing: 0.08em;
+        text-shadow: 0 0 18px rgba(255, 69, 0, 0.35);
+      }
+
+      .stat-label {
+        font-family: 'Roboto Condensed', sans-serif;
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--summary-muted);
+      }
+
+      .stat-meta {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      .summary-text {
+        font-size: 16px;
+        line-height: 1.6;
+        color: var(--text-primary);
+      }
+
+      .corrections-list {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .correction-item {
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        gap: 10px;
+        align-items: start;
+        padding: 10px 12px;
+        border: 1px solid rgba(220, 38, 38, 0.35);
+        border-radius: 10px;
+        background: rgba(220, 38, 38, 0.08);
+      }
+
+      .warn-icon {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        background: rgba(220, 38, 38, 0.18);
+        color: #ffb4b4;
+        font-weight: 900;
+        font-family: 'Roboto Condensed', sans-serif;
+        border: 1px solid rgba(220, 38, 38, 0.35);
+      }
+
+      .correction-text {
+        color: var(--text-primary);
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .closing {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(255, 69, 0, 0.25);
+        font-family: 'Bebas Neue', sans-serif;
+        font-size: 34px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--summary-accent);
+        text-shadow: 0 0 18px rgba(255, 69, 0, 0.35);
+      }
+
+      .actions {
+        margin-top: 18px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .action-btn {
+        background: var(--summary-accent);
+        color: #0a0a0a;
+        border: none;
+        padding: 12px 16px;
+        border-radius: 10px;
+        font-family: 'Bebas Neue', sans-serif;
+        letter-spacing: 0.08em;
+        font-size: 16px;
+        cursor: pointer;
+        text-transform: uppercase;
+      }
+
+      .action-btn.secondary {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-primary);
+        border: 1px solid rgba(255, 69, 0, 0.25);
+      }
+
+      .action-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .span-12 { grid-column: span 12; }
+      .span-6 { grid-column: span 6; }
+      .span-4 { grid-column: span 4; }
+
+      @media (max-width: 760px) {
+        .span-6, .span-4 { grid-column: span 12; }
+        .summary-title { font-size: 36px; }
+        .stat-number { font-size: 52px; }
+        .closing { font-size: 28px; }
+      }
+    </style>
+  </head>
+
+  <body class="athletic-body">
+    <div class="summary-shell">
+      <header class="summary-header">
+        <div class="summary-title">POST-WOD SUMMARY</div>
+        <div class="summary-subtitle" id="subtitle">Loading session...</div>
+      </header>
+
+      <main class="summary-grid">
+        <section class="panel span-4">
+          <div class="stat">
+            <div class="stat-number" id="repCount">--</div>
+            <div class="stat-label">REPS COMPLETED</div>
+            <div class="stat-meta" id="exerciseType">Exercise: --</div>
+          </div>
+        </section>
+
+        <section class="panel span-4">
+          <div class="stat">
+            <div class="stat-number" id="duration">--:--</div>
+            <div class="stat-label">SESSION DURATION</div>
+            <div class="stat-meta" id="interruptions">Interruptions: --</div>
+          </div>
+        </section>
+
+        <section class="panel span-4">
+          <div class="stat">
+            <div class="stat-number" id="correctionsCount">--</div>
+            <div class="stat-label">FORM CORRECTIONS</div>
+            <div class="stat-meta" id="timestamps">--</div>
+          </div>
+        </section>
+
+        <section class="panel span-12">
+          <div class="summary-text" id="summaryText">Loading summary...</div>
+          <div class="closing" id="closingLine">--</div>
+
+          <div class="actions">
+            <button class="action-btn" id="startNew">START NEW SESSION</button>
+            <button class="action-btn secondary" id="backToLive">BACK TO LIVE VIEW</button>
+          </div>
+        </section>
+
+        <section class="panel span-12" id="correctionsPanel" style="display:none;">
+          <div class="stat-label">FORM CORRECTIONS (SAFETY)</div>
+          <ul class="corrections-list" id="correctionsList"></ul>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      function getParam(name) {
+        const url = new URL(window.location.href);
+        return url.searchParams.get(name);
+      }
+
+      function formatDuration(sec) {
+        if (sec === null || sec === undefined) return "--:--";
+        const s = Math.max(0, Number(sec) || 0);
+        const m = Math.floor(s / 60);
+        const r = s % 60;
+        return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+      }
+
+      async function loadReport(sessionId) {
+        const resp = await fetch(`/reports/session/${encodeURIComponent(sessionId)}`);
+        if (!resp.ok) {
+          const msg = await resp.text();
+          throw new Error(msg || `Failed to load report (${resp.status})`);
+        }
+        return await resp.json();
+      }
+
+      function render(report) {
+        const details = report.details || {};
+        const repCount = report.rep_count ?? details.rep_count ?? 0;
+        const exerciseType = report.exercise_type ?? details.exercise_type ?? 'unknown';
+        const corrections = report.form_corrections ?? details.form_corrections ?? [];
+        const interruptions = report.interruption_count ?? details.interruption_count ?? 0;
+        const durationSec = report.session_duration_sec ?? null;
+        const startedAt = report.started_at ?? details.started_at ?? '';
+        const endedAt = report.ended_at ?? details.ended_at ?? '';
+
+        document.getElementById('repCount').textContent = repCount;
+        document.getElementById('exerciseType').textContent = `Exercise: ${String(exerciseType).toUpperCase()}`;
+        document.getElementById('duration').textContent = formatDuration(durationSec);
+        document.getElementById('interruptions').textContent = `Interruptions: ${interruptions}`;
+        document.getElementById('correctionsCount').textContent = Array.isArray(corrections) ? corrections.length : 0;
+        document.getElementById('timestamps').textContent = startedAt && endedAt ? `${startedAt} → ${endedAt}` : (startedAt || endedAt || '');
+
+        const summaryText = report.summary_text || report.text_report || 'Summary unavailable.';
+        document.getElementById('summaryText').textContent = summaryText;
+        document.getElementById('closingLine').textContent = report.motivational_closing_line || 'Good work. Show up tomorrow.';
+
+        const subtitle = `Session ${report.session_id || details.session_id || ''}`.trim();
+        document.getElementById('subtitle').textContent = subtitle || 'Session Summary';
+
+        if (Array.isArray(corrections) && corrections.length) {
+          document.getElementById('correctionsPanel').style.display = '';
+          const list = document.getElementById('correctionsList');
+          list.innerHTML = '';
+          for (const c of corrections) {
+            const li = document.createElement('li');
+            li.className = 'correction-item';
+
+            const icon = document.createElement('div');
+            icon.className = 'warn-icon';
+            icon.textContent = '!';
+
+            const text = document.createElement('div');
+            text.className = 'correction-text';
+            text.textContent = String(c);
+
+            li.appendChild(icon);
+            li.appendChild(text);
+            list.appendChild(li);
+          }
+        }
+      }
+
+      (async function init() {
+        const sessionId = getParam('session_id');
+        const startNewBtn = document.getElementById('startNew');
+        const backBtn = document.getElementById('backToLive');
+
+        startNewBtn.addEventListener('click', () => {
+          window.location.href = '/';
+        });
+        backBtn.addEventListener('click', () => {
+          window.location.href = '/';
+        });
+
+        if (!sessionId) {
+          document.getElementById('subtitle').textContent = 'Missing session_id in URL';
+          document.getElementById('summaryText').textContent = 'No session_id provided. Return to the live view and end a session again.';
+          document.getElementById('closingLine').textContent = '';
+          startNewBtn.disabled = false;
+          return;
+        }
+
+        try {
+          const report = await loadReport(sessionId);
+          render(report);
+        } catch (e) {
+          document.getElementById('subtitle').textContent = `Session ${sessionId}`;
+          document.getElementById('summaryText').textContent = 'Could not load session summary yet. If you just ended the session, give it a second and refresh.';
+          document.getElementById('closingLine').textContent = '';
+        }
+      })();
+    </script>
+  </body>
+</html>
