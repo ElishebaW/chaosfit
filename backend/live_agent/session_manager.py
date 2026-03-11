@@ -46,6 +46,9 @@ class SessionState:
     rep_count: int = 0
     form_corrections: list[str] = field(default_factory=list)
     live_model: str = "unknown"
+    total_interruptions: int = 0  # Track all interruptions including coach corrections
+    cumulative_rep_count: int = 0  # Track total reps across session
+    coach_interruptions: int = 0  # Track coach-initiated interruptions specifically
 
 
 class SessionManager:
@@ -99,19 +102,43 @@ class SessionManager:
     def append_event(self, session_id: str, event_type: str, payload: dict[str, Any]) -> None:
         state = self.get(session_id)
         
+        logging.debug(f"Processing event {event_type} for session {session_id}: {payload}")
+        
         # Track exercise data
         if "exercise_id" in payload and isinstance(payload["exercise_id"], str):
             exercise_id = payload["exercise_id"]
             state.exercise_history.append(exercise_id)
             state.current_exercise = exercise_id
+            logging.info(f"Updated exercise to {exercise_id} for session {session_id}")
             
         if "rep_count" in payload:
-            state.rep_count += _as_int(payload.get("rep_count")) or 0
+            rep_count = _as_int(payload.get("rep_count"))
+            if rep_count is not None:
+                state.rep_count += rep_count
+                state.cumulative_rep_count += rep_count
+                logging.info(f"Added {rep_count} reps to session {session_id} (total: {state.cumulative_rep_count})")
             
         if "form_corrections" in payload:
             corrections = payload.get("form_corrections")
             if isinstance(corrections, list):
-                state.form_corrections.extend([str(c) for c in corrections])
+                new_corrections = []
+                for correction in corrections:
+                    correction_str = str(correction).strip()
+                    if correction_str and correction_str not in state.form_corrections:
+                        state.form_corrections.append(correction_str)
+                        new_corrections.append(correction_str)
+                if new_corrections:
+                    logging.info(f"Added {len(new_corrections)} form corrections to session {session_id}")
+                        
+        if "exercise_type" in payload and isinstance(payload["exercise_type"], str):
+            state.current_exercise = payload["exercise_type"]
+            logging.info(f"Updated exercise type to {payload['exercise_type']} for session {session_id}")
+            
+        # Track interruptions
+        if payload.get("interruption") is True:
+            state.total_interruptions += 1
+            state.coach_interruptions += 1
+            logging.info(f"Coach interruption detected for session {session_id} (total: {state.total_interruptions}, coach: {state.coach_interruptions})")
                 
         if "form_score" in payload:
             state.recent_form_score = _as_float(payload.get("form_score"))
@@ -121,6 +148,7 @@ class SessionManager:
             state.time_remaining_sec = _as_int(payload.get("time_remaining_sec"))
 
         if not self._firestore:
+            logging.debug(f"Firestore disabled, skipping event write for session {session_id}")
             return
 
         event = SessionEvent(ts=utc_now_iso(), event_type=event_type, payload=payload)
@@ -158,20 +186,46 @@ class SessionManager:
         form_corrections: list[str] | None = None,
         session_goal: str | None = None,
     ) -> None:
-        state = self.get(session_id)
-        session_goal = session_goal or os.getenv("COACH_SESSION_GOAL")
-        summary = SessionSummary(
-            session_id=session_id,
-            user_id=user_id or state.parent_id,
-            started_at=state.started_at,
-            ended_at=state.ended_at or utc_now_iso(),
-            exercise_type=exercise_type,
-            rep_count=rep_count,
-            interruption_count=interruption_count,
-            form_corrections=tuple(form_corrections or []),
-            session_goal=session_goal,
-        )
-        self._write_summary(summary)
+        try:
+            state = self.get(session_id)
+            session_goal = session_goal or os.getenv("COACH_SESSION_GOAL")
+            
+            # Use accumulated state data as primary source, fallback to provided parameters
+            final_exercise_type = exercise_type or state.current_exercise
+            final_rep_count = rep_count if rep_count is not None else state.cumulative_rep_count
+            final_interruption_count = interruption_count if interruption_count > 0 else state.total_interruptions
+            final_form_corrections = form_corrections if form_corrections else state.form_corrections
+            
+            # Validate state before creating summary
+            if state.status != "ended":
+                logging.warning(f"Recording summary for session {session_id} but status is '{state.status}', not 'ended'")
+                # Set status to ended if not already ended
+                state.status = "ended"
+                state.ended_at = utc_now_iso()
+            
+            summary = SessionSummary(
+                session_id=session_id,
+                user_id=user_id or state.parent_id,
+                started_at=state.started_at,
+                ended_at=state.ended_at or utc_now_iso(),
+                exercise_type=final_exercise_type,
+                rep_count=final_rep_count,
+                interruption_count=final_interruption_count,
+                form_corrections=tuple(final_form_corrections),
+                session_goal=session_goal,
+            )
+            
+            # Log summary details for debugging
+            logging.info(f"Creating session summary for {session_id}: "
+                        f"exercise={final_exercise_type}, "
+                        f"reps={final_rep_count}, "
+                        f"interruptions={final_interruption_count}, "
+                        f"corrections={len(final_form_corrections)}")
+            
+            self._write_summary(summary)
+        except Exception as e:
+            logging.error(f"Failed to record session summary for {session_id}: {e}")
+            # Don't re-raise the exception - let the caller handle it
 
     def get_firestore_client(self):
         return self._firestore

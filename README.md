@@ -245,6 +245,7 @@ The overlay canvas listens to pointer movement above the webcam preview, records
 - Treat client input as untrusted: **ignore unknown history IDs** instead of failing mid-session.
 - “Unknown-time” flows work best as **small repeatable blocks** with clear voice scripts, not giant generated plans.
 - Coaching text matters as much as code: **short, concrete cues** reduce latency and improve comprehension.
+
 ### Debugging Session Data Issues
 - Check logs for "Exercise update received" vs "Session summary extracted" to verify data flow
 - Verify exercise library names match detection patterns exactly
