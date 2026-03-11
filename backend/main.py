@@ -77,6 +77,41 @@ def _normalize_corrections(value: Any) -> list[str]:
     return [single] if single else []
 
 
+async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> None:
+    """Process coach tool responses for exercise data events."""
+    try:
+        # Check if this is an exercise data tool response
+        if hasattr(event, 'tool_response') and event.tool_response is not None:
+            response_data = event.tool_response
+            
+            # Parse the tool response to extract exercise event data
+            if isinstance(response_data, dict) and response_data.get("status") == "success":
+                event_data = response_data.get("event")
+                if event_data and isinstance(event_data, dict):
+                    # Always override with the correct session_id from the WebSocket context
+                    tool_session_id = event_data.get("session_id")
+                    event_data["session_id"] = session_id  # Override with actual session ID
+                    
+                    # Create exercise_update event for session manager
+                    session_manager.append_event(
+                        session_id=session_id,
+                        event_type="exercise_update",
+                        payload=event_data
+                    )
+                    logger.info(f"Processed coach exercise event for session {session_id}: {event_data}")
+                    
+                    # Log session ID mapping for debugging
+                    if tool_session_id and tool_session_id != session_id:
+                        logger.warning(f"Session ID mismatch - tool: {tool_session_id}, actual: {session_id} - corrected")
+                    
+                    # Update interruption count if this was an interruption
+                    if event_data.get("interruption"):
+                        # This will be handled by the existing interrupted_count logic
+                        logger.info(f"Coach interruption detected for session {session_id}")
+    except Exception as e:
+        logger.error(f"Failed to process coach tool event: {e}")
+
+
 def _extract_end_summary(payload: dict[str, Any]) -> dict[str, Any]:
     summary_block = payload.get("summary")
     if not isinstance(summary_block, dict):
@@ -238,6 +273,8 @@ async def websocket_endpoint(
                     logging.info(f"WebSocket disconnected for session {session_id}, cleaning up session")
                     try:
                         state = session_manager.get(session_id)
+                        logging.info(f"Session {session_id} status: {state.status}, exercise_type: {state.current_exercise}, reps: {state.cumulative_rep_count}, interruptions: {state.total_interruptions}")
+                        
                         # Only save summary if session wasn't already properly ended
                         if state.status != "ended":
                             session_manager.complete_session(session_id)
@@ -246,8 +283,8 @@ async def websocket_endpoint(
                                 session_id=session_id,
                                 user_id=user_id,
                                 exercise_type=state.current_exercise or "unknown",
-                                rep_count=state.rep_count,
-                                interruption_count=interrupted_count,
+                                rep_count=state.cumulative_rep_count,
+                                interruption_count=interrupted_count + state.coach_interruptions,
                                 form_corrections=state.form_corrections,
                                 session_goal="session disconnected"
                             )
@@ -256,6 +293,7 @@ async def websocket_endpoint(
                             logging.info(f"Session {session_id} already ended, skipping disconnect summary")
                     except Exception as e:
                         logging.error(f"Failed to cleanup session {session_id}: {e}")
+                        logging.exception("Full exception details:", exc_info=True)
                     return
 
                 if "bytes" in message and message["bytes"] is not None:
@@ -304,14 +342,19 @@ async def websocket_endpoint(
                     session_manager.complete_session(session_id)
                     logging.info("Session completed, calling record_session_summary")
                     
+                    # Get current state for accurate data
+                    state = session_manager.get(session_id)
+                    logging.info(f"Session state before summary: exercise={state.current_exercise}, reps={state.cumulative_rep_count}, interruptions={state.total_interruptions}, corrections={len(state.form_corrections)}")
+                    
+                    # Use accumulated state data as primary source, fallback to extracted data
                     session_manager.record_session_summary(
                         session_id,
                         user_id=user_id,
-                        exercise_type=summary_payload["exercise_type"],
-                        rep_count=summary_payload["rep_count"],
-                        interruption_count=interrupted_count,
-                        form_corrections=summary_payload["form_corrections"],
-                        session_goal=summary_payload["session_goal"],
+                        exercise_type=state.current_exercise or summary_payload["exercise_type"],
+                        rep_count=state.cumulative_rep_count if state.cumulative_rep_count > 0 else summary_payload["rep_count"],
+                        interruption_count=interrupted_count + state.coach_interruptions,
+                        form_corrections=state.form_corrections if state.form_corrections else summary_payload["form_corrections"],
+                        session_goal=summary_payload["session_goal"] or "coach-guided session",
                     )
                     logging.info("Session summary recorded")
 
@@ -366,6 +409,11 @@ async def websocket_endpoint(
             ):
                 if websocket.application_state != WebSocketState.CONNECTED:
                     return
+                
+                # Handle coach tool responses for exercise data
+                if hasattr(event, 'tool_response') and event.tool_response is not None:
+                    await _process_coach_tool_event(event, session_id, session_manager)
+                
                 if bool(getattr(event, "interrupted", False)):
                     interrupted_count += 1
                     logger.info(
@@ -378,30 +426,49 @@ async def websocket_endpoint(
         except WebSocketDisconnect:
             return
         except Exception as exc:
-            logger.warning(
-                "Live runner ended unexpectedly session_id=%s user_id=%s error=%s",
-                session_id,
-                user_id,
-                exc,
+            # Check if this is an expected ADK connection error after end event
+            error_str = str(exc)
+            is_expected_error = (
+                "1000 None" in error_str or  # Normal connection close
+                ("1007 None" in error_str and "Request contains an invalid argument" in error_str)  # Expected after end event
             )
-            # Clean up session on unexpected termination
+            
+            if is_expected_error:
+                logger.info(
+                    "Live runner ended normally after end event session_id=%s user_id=%s error=%s",
+                    session_id,
+                    user_id,
+                    exc,
+                )
+            else:
+                logger.warning(
+                    "Live runner ended unexpectedly session_id=%s user_id=%s error=%s",
+                    session_id,
+                    user_id,
+                    exc,
+                )
+            
+            # Clean up session on unexpected termination only if not already ended
             try:
                 state = session_manager.get(session_id)
-                # Only save summary if session wasn't already properly ended
-                if state.status != "ended":
+                # Only save summary if session wasn't already properly ended AND this wasn't an expected error
+                if state.status != "ended" and not is_expected_error:
                     session_manager.complete_session(session_id)
                     session_manager.record_session_summary(
                         session_id=session_id,
                         user_id=user_id,
                         exercise_type=state.current_exercise or "unknown",
-                        rep_count=state.rep_count,
-                        interruption_count=interrupted_count,
+                        rep_count=state.cumulative_rep_count,
+                        interruption_count=interrupted_count + state.coach_interruptions,
                         form_corrections=state.form_corrections,
                         session_goal="session terminated unexpectedly"
                     )
                     logger.info(f"Session {session_id} cleaned up after unexpected termination with exercise data")
                 else:
-                    logger.info(f"Session {session_id} already ended, skipping unexpected termination summary")
+                    if is_expected_error:
+                        logger.info(f"Session {session_id} ended normally, expected ADK error suppressed")
+                    else:
+                        logger.info(f"Session {session_id} already ended, skipping unexpected termination summary")
             except Exception as cleanup_exc:
                 logger.error(f"Failed to cleanup session {session_id}: {cleanup_exc}")
             return
