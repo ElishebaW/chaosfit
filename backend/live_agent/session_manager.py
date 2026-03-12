@@ -49,6 +49,13 @@ class SessionState:
     total_interruptions: int = 0  # Track all interruptions including coach corrections
     cumulative_rep_count: int = 0  # Track total reps across session
     coach_interruptions: int = 0  # Track coach-initiated interruptions specifically
+    pause_count: int = 0  # Track number of pauses during session
+    total_pause_time_seconds: float = 0.0  # Track total pause time in seconds
+    planned_duration_minutes: int | None = None
+    equipment_available: tuple[str, ...] = ()
+    prefer_low_impact: bool = False
+    level: str | None = None
+    routine_plan: dict[str, Any] | None = None
 
 
 class SessionManager:
@@ -147,6 +154,18 @@ class SessionManager:
         if "time_remaining_sec" in payload:
             state.time_remaining_sec = _as_int(payload.get("time_remaining_sec"))
 
+        if "duration_minutes" in payload:
+            state.planned_duration_minutes = _as_int(payload.get("duration_minutes"))
+        if "equipment_available" in payload and isinstance(payload.get("equipment_available"), list):
+            state.equipment_available = tuple(str(e) for e in payload.get("equipment_available") or [])
+        if "prefer_low_impact" in payload:
+            state.prefer_low_impact = bool(payload.get("prefer_low_impact"))
+        if "level" in payload:
+            raw_level = payload.get("level")
+            state.level = str(raw_level).strip() if raw_level is not None and str(raw_level).strip() else None
+        if "routine_plan" in payload and isinstance(payload.get("routine_plan"), dict):
+            state.routine_plan = payload.get("routine_plan")
+
         if not self._firestore:
             logging.debug(f"Firestore disabled, skipping event write for session {session_id}")
             return
@@ -213,6 +232,8 @@ class SessionManager:
                 interruption_count=final_interruption_count,
                 form_corrections=tuple(final_form_corrections),
                 session_goal=session_goal,
+                pause_count=state.pause_count,
+                total_pause_time_seconds=state.total_pause_time_seconds,
             )
             
             # Log summary details for debugging
@@ -220,7 +241,9 @@ class SessionManager:
                         f"exercise={final_exercise_type}, "
                         f"reps={final_rep_count}, "
                         f"interruptions={final_interruption_count}, "
-                        f"corrections={len(final_form_corrections)}")
+                        f"corrections={len(final_form_corrections)}, "
+                        f"pauses={state.pause_count}, "
+                        f"total_pause_time={state.total_pause_time_seconds}s")
             
             self._write_summary(summary)
         except Exception as e:
@@ -237,26 +260,28 @@ class SessionManager:
         state.status = "paused"
         state.pause_reason = reason
         state.paused_at = utc_now_iso()
+        state.pause_count += 1  # Increment pause count
         self._upsert_session_doc(state)
         self.append_event(
             session_id,
             "session_state",
-            {"status": "paused", "reason": reason, "paused_at": state.paused_at},
+            {"status": "paused", "reason": reason, "paused_at": state.paused_at, "pause_count": state.pause_count},
         )
         return state
 
-    def resume_session(self, session_id: str) -> SessionState:
+    def resume_session(self, session_id: str, pause_duration_seconds: float = 0.0) -> SessionState:
         state = self.get(session_id)
         if state.status == "ended":
             return state
         state.status = "active"
         state.pause_reason = None
         state.resumed_at = utc_now_iso()
+        state.total_pause_time_seconds += pause_duration_seconds  # Add to total pause time
         self._upsert_session_doc(state)
         self.append_event(
             session_id,
             "session_state",
-            {"status": "resumed", "resumed_at": state.resumed_at},
+            {"status": "resumed", "resumed_at": state.resumed_at, "pause_duration_seconds": pause_duration_seconds, "total_pause_time_seconds": state.total_pause_time_seconds},
         )
         return state
 
@@ -283,7 +308,9 @@ class SessionManager:
                 time_remaining_sec=remaining,
                 recent_form_score=state.recent_form_score,
                 recent_fatigue=state.recent_fatigue,
-                prefer_low_impact=True,
+                prefer_low_impact=state.prefer_low_impact,
+                equipment_available=state.equipment_available,
+                level=state.level,
             ),
             block_duration_sec=min(remaining, 120),
             library=self._library,

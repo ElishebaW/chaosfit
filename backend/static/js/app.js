@@ -74,6 +74,8 @@ const statusIndicator = document.getElementById("statusIndicator");
 const statusText = document.getElementById("statusText");
 const startSessionButton = document.getElementById("startSession");
 const stopSessionButton = document.getElementById("stopSession");
+const startSessionBtn = document.getElementById("startSessionBtn");
+const stopSessionBtn = document.getElementById("stopSessionBtn");
 const sessionStatusText = document.getElementById("sessionStatus");
 const repCountEl = document.getElementById("repCount");
 const incrementRepButton = document.getElementById("incrementRep");
@@ -88,6 +90,8 @@ const interruptionBanner = document.getElementById("interruptionBanner");
 const sessionPauseBanner = document.getElementById("sessionPauseBanner");
 const pauseSessionButton = document.getElementById("pauseSessionButton");
 const resumeSessionButton = document.getElementById("resumeSessionButton");
+const pauseBtn = document.getElementById("pauseBtn");
+const resumeBtn = document.getElementById("resumeBtn");
 let currentMessageId = null;
 let currentBubbleElement = null;
 let currentInputTranscriptionId = null;
@@ -106,6 +110,11 @@ let sessionGoal = null;
 let interruptionBannerTimer = null;
 let isSessionPaused = false;
 let currentPauseReason = null;
+
+// Pause/Resume tracking variables
+let sessionPaused = false;
+let pauseStartTime = null;
+let totalPauseTime = 0;
 
 let hudRepCount = 0;
 let hudTimerSeconds = 0;
@@ -150,18 +159,55 @@ function stopHudTimer() {
   }
 }
 
-async function startHudSession() {
-  if (startSessionButton) startSessionButton.disabled = true;
+async function startSession() {
   try {
-    await startVideoStream();
+    // Step 1: Request microphone access
+    const audioStream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    
+    // Step 2: Request camera access
+    const videoStream = await navigator.mediaDevices.getUserMedia({ 
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: "user"
+      }
+    });
+    
+    // Step 3: Combine streams
+    const combinedStream = new MediaStream();
+    audioStream.getTracks().forEach(track => combinedStream.addTrack(track));
+    videoStream.getTracks().forEach(track => combinedStream.addTrack(track));
+    
+    mediaStream = combinedStream;
+    
+    // Step 4: Display video preview
+    const videoElement = document.getElementById("videoPreview");
+    videoElement.srcObject = videoStream;
+    videoElement.play();
+    
+    // Step 5: Initialize audio
+    await startAudio();
+    
+    // Step 6: Set session status
     setHudSessionStatus(true);
     startHudTimer();
-
-    if (stopSessionButton) stopSessionButton.style.display = "";
-    if (startSessionButton) startSessionButton.style.display = "none";
-  } catch (e) {
-    console.warn("Failed to start session:", e);
-    if (startSessionButton) startSessionButton.disabled = false;
+    
+    // Step 7: Update UI
+    if (startSessionBtn) startSessionBtn.style.display = "none";
+    if (stopSessionBtn) stopSessionBtn.style.display = "inline-block";
+    if (pauseBtn) pauseBtn.style.display = "inline-block";
+    
+    addSystemMessage("✅ Session started. Audio and video are active.");
+    
+  } catch (error) {
+    console.error("Failed to start session:", error);
+    addSystemMessage(`❌ Error: ${error.message}`);
   }
 }
 
@@ -185,33 +231,78 @@ async function stopHudSession() {
     // Fall through to local UI reset if navigation fails.
   }
 
-  // Reset exercise tracking
-  currentExercise = null;
-  exerciseRepCount = 0;
-  formCorrections = [];
-  sessionGoal = null;
-  
-  // Reset session status display
-  if (sessionStatusText) {
-    sessionStatusText.textContent = "● READY";
-  }
-
-  hudTimerRunning = false;
-  if (hudTimerInterval) {
-    clearInterval(hudTimerInterval);
-    hudTimerInterval = null;
-  }
+  // Reset HUD
   hudRepCount = 0;
   hudTimerSeconds = 0;
   setHudRepCount(0);
   setHudTimerSeconds(0);
   setHudSessionStatus(false);
 
-  if (startSessionButton) {
-    startSessionButton.style.display = "";
-    startSessionButton.disabled = !(websocket && websocket.readyState === WebSocket.OPEN);
+  if (startSessionBtn) {
+    startSessionBtn.style.display = "inline-block";
   }
-  if (stopSessionButton) stopSessionButton.style.display = "none";
+  if (stopSessionBtn) stopSessionBtn.style.display = "none";
+  if (pauseBtn) pauseBtn.style.display = "none";
+  if (resumeBtn) resumeBtn.style.display = "none";
+  
+  // Reset pause tracking variables
+  sessionPaused = false;
+  pauseStartTime = null;
+  totalPauseTime = 0;
+}
+
+// Pause session functionality
+async function pauseSession() {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN || sessionPaused) return;
+  
+  sessionPaused = true;
+  pauseStartTime = Date.now();
+  
+  // Stop audio streaming temporarily
+  if (micStream) {
+    micStream.getTracks().forEach(track => track.enabled = false);
+  }
+  
+  // Send pause event to backend
+  websocket.send(JSON.stringify({
+    type: "pause_session",
+    session_id: sessionId,
+    timestamp: new Date().toISOString()
+  }));
+  
+  // Update UI
+  if (pauseBtn) pauseBtn.style.display = "none";
+  if (resumeBtn) resumeBtn.style.display = "inline-block";
+  addSystemMessage("⏸ Session paused");
+}
+
+// Resume session functionality
+async function resumeSession() {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN || !sessionPaused) return;
+  
+  // Calculate pause duration
+  const pauseDuration = (Date.now() - pauseStartTime) / 1000;
+  totalPauseTime += pauseDuration;
+  
+  sessionPaused = false;
+  
+  // Resume audio streaming
+  if (micStream) {
+    micStream.getTracks().forEach(track => track.enabled = true);
+  }
+  
+  // Send resume event to backend with pause duration
+  websocket.send(JSON.stringify({
+    type: "resume_session",
+    session_id: sessionId,
+    pause_duration_seconds: pauseDuration,
+    timestamp: new Date().toISOString()
+  }));
+  
+  // Update UI
+  if (pauseBtn) pauseBtn.style.display = "inline-block";
+  if (resumeBtn) resumeBtn.style.display = "none";
+  addSystemMessage("▶ Session resumed");
 }
 
 // Helper function to clean spaces between CJK characters
@@ -392,15 +483,15 @@ if (clearConsoleBtn) {
   clearConsoleBtn.addEventListener('click', clearConsole);
 }
 
-if (startSessionButton) {
-  startSessionButton.addEventListener("click", () => {
-    void startHudSession();
+if (startSessionBtn) {
+  startSessionBtn.addEventListener("click", () => {
+    void startSession();
   });
 }
 
-if (stopSessionButton) {
-  stopSessionButton.addEventListener("click", () => {
-    void stopHudSession();
+if (stopSessionBtn) {
+  stopSessionBtn.addEventListener("click", () => {
+    void stopSession();
   });
 }
 
@@ -446,6 +537,19 @@ if (resetTimerButton) {
   });
 }
 
+// Add event listeners for pause/resume buttons
+if (pauseBtn) {
+  pauseBtn.addEventListener("click", () => {
+    void pauseSession();
+  });
+}
+
+if (resumeBtn) {
+  resumeBtn.addEventListener("click", () => {
+    void resumeSession();
+  });
+}
+
 // Update connection status UI
 function updateConnectionStatus(connected) {
   if (connected) {
@@ -456,8 +560,8 @@ function updateConnectionStatus(connected) {
     statusText.textContent = "Disconnected";
   }
 
-  if (startSessionButton && startSessionButton.style.display !== "none") {
-    startSessionButton.disabled = !connected;
+  if (startSessionBtn && startSessionBtn.style.display !== "none") {
+    startSessionBtn.disabled = !connected;
   }
 }
 
@@ -588,8 +692,8 @@ function connectWebsocket() {
     addSystemMessage("Connected to ADK streaming server");
 
     setHudSessionStatus(false);
-    if (startSessionButton && startSessionButton.style.display !== "none") {
-      startSessionButton.disabled = false;
+    if (startSessionBtn && startSessionBtn.style.display !== "none") {
+      startSessionBtn.disabled = false;
     }
 
     // Log to console
@@ -1022,9 +1126,6 @@ function connectWebsocket() {
     document.getElementById("sendButton").disabled = true;
     if (is_audio || isAudioStarting) {
       void stopAudio(true);
-    } else {
-      startAudioButton.disabled = false;
-      startAudioButton.textContent = "Start Audio";
     }
     addSystemMessage("Connection closed. Reconnecting in 5 seconds...");
 
@@ -1605,9 +1706,6 @@ async function stopAudio(silent = false) {
   audioPlayerContext = null;
   micStream = null;
 
-  startAudioButton.disabled = false;
-  startAudioButton.textContent = "Start Audio";
-
   if (!silent) {
     addSystemMessage("Audio mode stopped");
     addConsoleEntry('outgoing', 'Audio Mode Stopped', {
@@ -1616,52 +1714,6 @@ async function stopAudio(silent = false) {
     }, '🛑', 'system');
   }
 }
-
-// Start the audio only when the user clicked the button
-// (due to the gesture requirement for the Web Audio API)
-const startAudioButton = document.getElementById("startAudioButton");
-startAudioButton.addEventListener("click", () => {
-  if (isAudioStarting) return;
-  if (isSessionPaused) {
-    addSystemMessage("Session is paused. Resume session before starting audio.");
-    return;
-  }
-
-  if (is_audio) {
-    void stopAudio();
-    return;
-  }
-
-  isAudioStarting = true;
-  startAudioButton.disabled = true;
-  startAudioButton.textContent = "Starting...";
-  startAudio().then(() => {
-    is_audio = true;
-    isAudioStarting = false;
-    startAudioButton.disabled = false;
-    startAudioButton.textContent = "Stop Audio";
-    addSystemMessage("Audio mode enabled - you can now speak to the agent");
-
-    // Log to console
-    addConsoleEntry('outgoing', 'Audio Mode Enabled', {
-      status: 'Audio worklets started',
-      message: 'Microphone active - audio input will be sent to agent'
-    }, '🎤', 'system');
-  }).catch((error) => {
-    is_audio = false;
-    isAudioStarting = false;
-    startAudioButton.disabled = false;
-    startAudioButton.textContent = "Start Audio";
-    const message = error?.message || "Unknown audio startup error";
-    addSystemMessage(`Failed to start audio: ${message}`);
-    addConsoleEntry('error', 'Audio startup failed', {
-      error: message,
-      secureContext: window.isSecureContext,
-      host: window.location.host,
-      protocol: window.location.protocol
-    }, '⚠️', 'system');
-  });
-});
 
 // Audio recorder handler
 function audioRecorderHandler(pcmData) {

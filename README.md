@@ -88,6 +88,94 @@ Here's exactly how to use ChaosFit from setup to results:
    - Click "Resume Session" when ready to continue
    - Coach automatically adjusts workout based on remaining time
 
+### WebSocket Message Contract (UI Integration)
+
+The frontend communicates with the backend over a WebSocket:
+
+- **URL**: `/ws/{user_id}/{session_id}`
+- **Direction**:
+  - Client-to-server: JSON messages (and audio/video frames)
+  - Server-to-client: streaming Gemini Live events + ChaosFit control messages
+
+#### Client → Server: Optional `session_setup`
+
+Send this once after connecting (optional). If not sent, the session still works, but the server will fall back to unknown-time adaptive blocks.
+
+```json
+{
+  "type": "session_setup",
+  "duration_minutes": 12,
+  "equipment_available": [],
+  "prefer_low_impact": true,
+  "level": "beginner"
+}
+```
+
+- **`duration_minutes`**
+  - `5 | 12 | 20` generates a timeboxed plan.
+  - Omit or set to an invalid value to use unknown-time mode.
+- **`equipment_available`**
+  - List of strings (e.g. `["mat", "dumbbells"]`).
+- **`prefer_low_impact`**
+  - Boolean; if true, routines avoid higher-impact cardio where possible.
+- **`level`**
+  - Optional string. Current scheduling uses this as a hint.
+
+#### Server → Client: `session_setup_confirmed`
+
+After `session_setup`, the server responds with the generated routine plan.
+
+```json
+{
+  "type": "session_setup_confirmed",
+  "routine_plan": {
+    "mode": "timeboxed",
+    "duration_minutes": 12,
+    "total_duration_sec": 720,
+    "library_version": "...",
+    "blocks": [
+      {
+        "name": "Warmup",
+        "mode": "warmup",
+        "duration_sec": 120,
+        "items": [{"exercise_id": "...", "prescription": {"type": "..."}}],
+        "voice_script": "..."
+      }
+    ]
+  }
+}
+```
+
+The backend also injects the routine plan into the coach context so the coach can follow it.
+
+#### Server → Client: `adaptive_block`
+
+During a session, the backend may push an updated recommended next block (for example after interruptions, form corrections, fatigue signals, time pressure, or when resuming).
+
+```json
+{
+  "type": "adaptive_block",
+  "reason": "resume",
+  "block": {
+    "name": "Adaptive Block",
+    "mode": "main",
+    "duration_sec": 120,
+    "items": [{"exercise_id": "...", "prescription": {"type": "..."}}],
+    "voice_script": "...",
+    "source": "vertex_ai"
+  }
+}
+```
+
+`reason` can be one of:
+- `resume`
+- `interruption`
+- `form_correction`
+- `fatigue`
+- `low_form`
+- `time_pressure`
+- `auto`
+
 5. **End Session & Get Summary**
    - Click "End Session" when workout is complete
    - System automatically generates detailed summary including:
