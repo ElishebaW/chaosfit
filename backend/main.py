@@ -23,6 +23,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from backend.live_agent.session_manager import SessionManager
+from backend.live_agent.gemini_live_client import GeminiLiveClient
 from backend.reports.report_generator import SessionReportGenerator
 from backend.routines.session_adapter import generate_initial_plan
 
@@ -180,7 +181,42 @@ async def favicon() -> Response:
 async def session_report(session_id: str) -> dict[str, Any]:
     client = session_manager.get_firestore_client()
     if not client:
-        raise HTTPException(status_code=503, detail="Firestore is not configured")
+        # Fallback to in-memory session data when Firestore is not configured
+        try:
+            state = session_manager.get(session_id)
+            # Create a basic report from in-memory state
+            from datetime import datetime
+            now = datetime.utcnow().isoformat() + "Z"
+            
+            return {
+                "session_id": session_id,
+                "user_id": state.parent_id,
+                "text_report": f"Session {session_id} completed. Exercise: {state.current_exercise or 'unknown'}, Reps: {state.cumulative_rep_count}, Corrections: {len(state.form_corrections)}",
+                "details": {
+                    "session_id": session_id,
+                    "user_id": state.parent_id,
+                    "status": state.status,
+                    "started_at": state.started_at,
+                    "ended_at": state.ended_at or now,
+                    "exercise_type": state.current_exercise,
+                    "rep_count": state.cumulative_rep_count,
+                    "interruption_count": state.total_interruptions,
+                    "form_corrections": state.form_corrections,
+                    "session_goal": "coach-guided session",
+                },
+                "summary_text": f"You completed {state.cumulative_rep_count} reps of {state.current_exercise or 'various exercises'} with {len(state.form_corrections)} form corrections.",
+                "motivational_closing_line": "Good work. Show up tomorrow.",
+                "rep_count": state.cumulative_rep_count,
+                "exercise_type": state.current_exercise,
+                "form_corrections": list(state.form_corrections),
+                "interruption_count": state.total_interruptions,
+                "session_duration_sec": None,  # Not available in memory-only mode
+                "started_at": state.started_at,
+                "ended_at": state.ended_at or now,
+            }
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Session not found in memory")
+    
     report = SessionReportGenerator(client).to_payload(session_id)
     if not report:
         raise HTTPException(status_code=404, detail="Session summary not found")
@@ -686,6 +722,11 @@ async def websocket_endpoint(
                     exc,
                 )
                 return  # Don't re-throw expected errors
+            elif "1008" in error_str:
+                logger.error(f"1008 policy violation error in live runner: {exc}")
+                logger.error("This typically happens when the system instruction is too long for the native audio model")
+                await send_session_state("error", reason="Live session ended due to content policy restrictions")
+                return
             else:
                 logger.warning(
                     "Live runner ended unexpectedly session_id=%s user_id=%s error=%s",
