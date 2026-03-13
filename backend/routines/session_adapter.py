@@ -61,11 +61,15 @@ def generate_initial_plan(
         level=level,
     )
 
-    if duration_minutes in (5, 12, 20):
-        plan = generate_timeboxed_routine(duration_minutes, prefs=prefs)
-        out = routine_plan_to_dict(plan)
-        out["mode"] = "timeboxed"
-        return out
+    if duration_minutes in (1, 5, 12, 15, 20, 30):
+        try:
+            plan = generate_timeboxed_routine(duration_minutes, prefs=prefs)
+            out = routine_plan_to_dict(plan)
+            out["mode"] = "timeboxed"
+            return out
+        except ValueError:
+            # If timeboxed routine fails, fall back to unknown time mode
+            pass
 
     plan = generate_unknown_time_seed(prefs=prefs)
     out = routine_plan_to_dict(plan)

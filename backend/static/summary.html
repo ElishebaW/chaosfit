@@ -320,10 +320,18 @@
         const startNewBtn = document.getElementById('startNew');
         const backBtn = document.getElementById('backToLive');
 
+        // Ensure buttons are always enabled
+        if (startNewBtn) startNewBtn.disabled = false;
+        if (backBtn) backBtn.disabled = false;
+
+        console.log('Buttons found:', !!startNewBtn, !!backBtn);
+
         startNewBtn.addEventListener('click', () => {
+          console.log('Start New button clicked');
           window.location.href = '/';
         });
         backBtn.addEventListener('click', () => {
+          console.log('Back to Live button clicked');
           window.location.href = '/';
         });
 

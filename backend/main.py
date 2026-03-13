@@ -377,12 +377,25 @@ async def websocket_endpoint(
                     prefer_low_impact = bool(payload.get("prefer_low_impact", False))
                     level = _safe_str(payload.get("level"))
 
-                    plan = generate_initial_plan(
-                        duration_minutes=duration_minutes,
-                        equipment_available=equipment_available,
-                        prefer_low_impact=prefer_low_impact,
-                        level=level,
-                    )
+                    print(f"DEBUG: Session setup received - duration: {duration_minutes}, equipment: {equipment_available}, level: {level}")
+
+                    try:
+                        plan = generate_initial_plan(
+                            duration_minutes=duration_minutes,
+                            equipment_available=equipment_available,
+                            prefer_low_impact=prefer_low_impact,
+                            level=level,
+                        )
+                        print(f"DEBUG: Plan generated successfully - mode: {plan.get('mode')}, duration: {plan.get('duration_minutes')}")
+                    except Exception as e:
+                        print(f"ERROR: Failed to generate plan: {e}")
+                        # Generate a fallback plan
+                        plan = generate_initial_plan(
+                            duration_minutes=None,
+                            equipment_available=equipment_available,
+                            prefer_low_impact=prefer_low_impact,
+                            level=level,
+                        )
 
                     session_manager.append_event(
                         session_id=session_id,
@@ -404,6 +417,32 @@ async def websocket_endpoint(
                             }
                         )
                     )
+
+                    # Start automatic session end timer for timeboxed sessions
+                    if plan.get("mode") == "timeboxed" and duration_minutes and duration_minutes > 0:
+                        async def end_session_after_duration():
+                            try:
+                                await asyncio.sleep(duration_minutes * 60)  # Convert minutes to seconds
+                                logging.info(f"Auto-ending session {session_id} after {duration_minutes} minutes")
+                                
+                                # Check if session is still active before ending
+                                try:
+                                    state = session_manager.get(session_id)
+                                    if hasattr(state, 'status') and state.status in ["ended", "completed"]:
+                                        logging.info(f"Session {session_id} already ended, skipping auto-end")
+                                        return
+                                except:
+                                    # If we can't check status, proceed with ending
+                                    pass
+                                
+                                # Send session end event
+                                await safe_send_text(json.dumps({"type": "session_end", "reason": "duration_complete"}))
+                            except Exception as e:
+                                logging.error(f"Failed to auto-end session {session_id}: {e}")
+                        
+                        # Start the timer in the background
+                        asyncio.create_task(end_session_after_duration())
+                        logging.info(f"Started auto-end timer for {duration_minutes} minute session")
 
                     blocks = plan.get("blocks") if isinstance(plan, dict) else None
                     if isinstance(blocks, list) and blocks:
@@ -498,6 +537,41 @@ async def websocket_endpoint(
 
                     # Session summary is already written by session_manager.record_session_summary()
                     # No need for separate async call
+                    await send_session_state("ended")
+                    live_request_queue.close()
+                    return
+
+                if event_type == "session_end":
+                    reason = payload.get("reason", "unknown")
+                    logging.info(f"Processing automatic session end for session {session_id}, reason: {reason}")
+                    
+                    # Create a summary payload for automatic end
+                    summary_payload = {
+                        "exercise_type": "unknown",
+                        "rep_count": 0,
+                        "form_corrections": [],
+                        "session_goal": f"{duration_minutes}-minute workout" if duration_minutes else "timeboxed session"
+                    }
+                    
+                    session_manager.complete_session(session_id)
+                    logging.info("Auto-session completed, calling record_session_summary")
+                    
+                    # Get current state for accurate data
+                    state = session_manager.get(session_id)
+                    logging.info(f"Session state before auto-summary: exercise={state.current_exercise}, reps={state.cumulative_rep_count}, interruptions={state.total_interruptions}, corrections={len(state.form_corrections)}")
+                    
+                    # Use accumulated state data as primary source, fallback to extracted data
+                    session_manager.record_session_summary(
+                        session_id,
+                        user_id=user_id,
+                        exercise_type=state.current_exercise or summary_payload["exercise_type"],
+                        rep_count=state.cumulative_rep_count if state.cumulative_rep_count > 0 else summary_payload["rep_count"],
+                        interruption_count=interrupted_count + state.coach_interruptions,
+                        form_corrections=state.form_corrections if state.form_corrections else summary_payload["form_corrections"],
+                        session_goal=summary_payload["session_goal"],
+                    )
+                    logging.info("Auto-session summary recorded")
+
                     await send_session_state("ended")
                     live_request_queue.close()
                     return
