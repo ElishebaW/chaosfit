@@ -451,18 +451,18 @@ async def websocket_endpoint(
                             if isinstance(b, dict) and b.get("voice_script"):
                                 scripts.append(str(b.get("voice_script")))
                         if scripts:
-                            routine_text = "\n\n".join(scripts)
                             content = types.Content(
                                 parts=[
                                     types.Part(
-                                        text=(
-                                            "Session setup received. Use this plan to guide the workout.\n\n"
-                                            + routine_text
-                                        )
+                                        text="Workout ready."
                                     )
                                 ]
                             )
-                            live_request_queue.send_content(content)
+                            logging.info(f"Sending session setup content to live queue: {content}")
+                            try:
+                                live_request_queue.send_content(content)
+                            except Exception as e:
+                                logging.warning(f"Failed to send content to live queue: {e}")
                     continue
 
                 # Handle pause_session and resume_session events from frontend
@@ -494,14 +494,15 @@ async def websocket_endpoint(
                         content = types.Content(
                             parts=[
                                 types.Part(
-                                    text=(
-                                        "Session resumed. Use this next adaptive block to continue the workout.\n\n"
-                                        + str(block.get("voice_script", ""))
-                                    )
+                                    text="Resuming workout."
                                 )
                             ]
                         )
-                        live_request_queue.send_content(content)
+                        logging.info(f"Sending adaptive resume content to live queue: {content}")
+                        try:
+                            live_request_queue.send_content(content)
+                        except Exception as e:
+                            logging.warning(f"Failed to send adaptive resume content to live queue: {e}")
                         logging.info(
                             "Sent adaptive resume block session_id=%s source=%s",
                             session_id,
@@ -562,7 +563,7 @@ async def websocket_endpoint(
                     
                     # Use accumulated state data as primary source, fallback to extracted data
                     session_manager.record_session_summary(
-                        session_id,
+                        session_id=session_id,
                         user_id=user_id,
                         exercise_type=state.current_exercise or summary_payload["exercise_type"],
                         rep_count=state.cumulative_rep_count if state.cumulative_rep_count > 0 else summary_payload["rep_count"],
@@ -581,7 +582,11 @@ async def websocket_endpoint(
 
                 if event_type == "text":
                     content = types.Content(parts=[types.Part(text=str(payload.get("text", "")))])
-                    live_request_queue.send_content(content)
+                    logging.info(f"Sending text content to live queue: {content}")
+                    try:
+                        live_request_queue.send_content(content)
+                    except Exception as e:
+                        logging.warning(f"Failed to send text content to live queue: {e}")
                     continue
 
                 if event_type in {"image", "video"}:
@@ -667,14 +672,15 @@ async def websocket_endpoint(
                             content = types.Content(
                                 parts=[
                                     types.Part(
-                                        text=(
-                                            "Adaptive update: switch to this next block if appropriate.\n\n"
-                                            + str(block.get("voice_script", ""))
-                                        )
+                                        text="Adaptive block ready."
                                     )
                                 ]
                             )
-                            live_request_queue.send_content(content)
+                            logging.info(f"Sending adaptive block content to live queue: {content}")
+                            try:
+                                live_request_queue.send_content(content)
+                            except Exception as e:
+                                logging.warning(f"Failed to send adaptive block content to live queue: {e}")
                             last_adaptive_block_sent_at = now
                             logging.info(
                                 "Sent adaptive block session_id=%s reason=%s source=%s",
@@ -711,6 +717,7 @@ async def websocket_endpoint(
                     user_id,
                     exc,
                 )
+                return  # Don't re-throw expected errors
             else:
                 logger.warning(
                     "Live runner ended unexpectedly session_id=%s user_id=%s error=%s",
