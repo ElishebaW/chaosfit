@@ -451,18 +451,9 @@ async def websocket_endpoint(
                             if isinstance(b, dict) and b.get("voice_script"):
                                 scripts.append(str(b.get("voice_script")))
                         if scripts:
-                            content = types.Content(
-                                parts=[
-                                    types.Part(
-                                        text="Workout ready."
-                                    )
-                                ]
-                            )
-                            logging.info(f"Sending session setup content to live queue: {content}")
-                            try:
-                                live_request_queue.send_content(content)
-                            except Exception as e:
-                                logging.warning(f"Failed to send content to live queue: {e}")
+                            # Skip sending content to live model to avoid 1008 policy violations
+                            # The live audio model rejects any text content
+                            logging.info("Skipping live content send entirely - model rejects text")
                     continue
 
                 # Handle pause_session and resume_session events from frontend
@@ -491,18 +482,8 @@ async def websocket_endpoint(
                                 }
                             )
                         )
-                        content = types.Content(
-                            parts=[
-                                types.Part(
-                                    text="Resuming workout."
-                                )
-                            ]
-                        )
-                        logging.info(f"Sending adaptive resume content to live queue: {content}")
-                        try:
-                            live_request_queue.send_content(content)
-                        except Exception as e:
-                            logging.warning(f"Failed to send adaptive resume content to live queue: {e}")
+                        # Skip sending content to live model to avoid 1008 policy violations
+                        logging.info("Skipping adaptive resume content send - model rejects text")
                         logging.info(
                             "Sent adaptive resume block session_id=%s source=%s",
                             session_id,
@@ -581,12 +562,9 @@ async def websocket_endpoint(
                     continue
 
                 if event_type == "text":
-                    content = types.Content(parts=[types.Part(text=str(payload.get("text", "")))])
-                    logging.info(f"Sending text content to live queue: {content}")
-                    try:
-                        live_request_queue.send_content(content)
-                    except Exception as e:
-                        logging.warning(f"Failed to send text content to live queue: {e}")
+                    # Skip sending user text to live model to avoid 1008 policy violations
+                    # The live audio model rejects any text content
+                    logging.info(f"Skipping user text send to avoid 1008 error: {payload.get('text', '')[:50]}")
                     continue
 
                 if event_type in {"image", "video"}:
@@ -669,18 +647,8 @@ async def websocket_endpoint(
                                     }
                                 )
                             )
-                            content = types.Content(
-                                parts=[
-                                    types.Part(
-                                        text="Adaptive block ready."
-                                    )
-                                ]
-                            )
-                            logging.info(f"Sending adaptive block content to live queue: {content}")
-                            try:
-                                live_request_queue.send_content(content)
-                            except Exception as e:
-                                logging.warning(f"Failed to send adaptive block content to live queue: {e}")
+                            # Skip sending content to live model to avoid 1008 policy violations
+                            logging.info("Skipping adaptive block content send - model rejects text")
                             last_adaptive_block_sent_at = now
                             logging.info(
                                 "Sent adaptive block session_id=%s reason=%s source=%s",
