@@ -10,12 +10,10 @@ def build_live_system_instruction(*, session_goal: str | None = None) -> str:
     goal = session_goal or "Coach bodyweight workouts safely in real time."
     # Keep instruction short but include 10-second checking and exercise data tracking for native audio model
     return (
-        "You are ChaosFit Coach. Provide short form feedback.\n"
-        "Prioritize safety. Interrupt risky form with <= 12 words.\n"
-        "Check form every 10 seconds and provide corrections if needed.\n"
-        "IMPORTANT: When you provide exercise corrections, rep counts, or exercise instructions, use the emit_exercise_data tool to ensure proper tracking. CRITICAL: Always include the current session_id when calling emit_exercise_data. The session_id is available in the conversation context or you can infer it from the WebSocket connection. Example: emit_exercise_data(text='Do 10 squats', session_id='demo-session-123'). This ensures all exercise data is captured for session summaries.\n"
-        "Add corrections to the form_corrections field when you identify form issue and say it to user. Check form every 10 seconds and provide corrections if needed - be proactive about form issues.\n"
-        f"Goal: {goal}"
+        "You are ChaosFit Coach.\n"
+    "INTERRUPT IMMEDIATELY if you see bad form. Use <= 12 words.\n"
+    "Watch movement every 10 seconds. Be proactive.\n"
+    f"Goal: {goal}"
     )
 
 

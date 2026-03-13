@@ -269,7 +269,7 @@ async def websocket_endpoint(
     websocket: WebSocket,
     user_id: str,
     session_id: str,
-    proactivity: bool = False,
+    proactivity: bool = True,
     affective_dialog: bool = False,
 ) -> None:
     await websocket.accept()
@@ -294,9 +294,7 @@ async def websocket_endpoint(
             input_audio_transcription=types.AudioTranscriptionConfig(),
             output_audio_transcription=types.AudioTranscriptionConfig(),
             session_resumption=types.SessionResumptionConfig(),
-            proactivity=(
-                types.ProactivityConfig(proactive_audio=True) if proactivity else None
-            ),
+            proactivity=types.ProactivityConfig(proactive_audio=True),
             enable_affective_dialog=affective_dialog if affective_dialog else None,
         )
     else:
@@ -487,9 +485,18 @@ async def websocket_endpoint(
                             if isinstance(b, dict) and b.get("voice_script"):
                                 scripts.append(str(b.get("voice_script")))
                         if scripts:
-                            # Skip sending content to live model to avoid 1008 policy violations
-                            # The live audio model rejects any text content
-                            logging.info("Skipping live content send entirely - model rejects text")
+                            # Send truncated voice scripts to live model to avoid 1008 policy violations
+                            for script in scripts:
+                                # Truncate to first 100 characters to avoid policy violations
+                                truncated_script = script[:100] + "..." if len(script) > 100 else script
+                                content = types.Content(
+                                    parts=[types.Part(text=truncated_script)]
+                                )
+                                try:
+                                    live_request_queue.send_content(content)
+                                    logging.info(f"Sent truncated script to live model: {truncated_script[:50]}...")
+                                except Exception as e:
+                                    logging.warning(f"Failed to send script to live model: {e}")
                     continue
 
                 # Handle pause_session and resume_session events from frontend
@@ -518,8 +525,19 @@ async def websocket_endpoint(
                                 }
                             )
                         )
-                        # Skip sending content to live model to avoid 1008 policy violations
-                        logging.info("Skipping adaptive resume content send - model rejects text")
+                        # Send truncated resume content to live model to avoid 1008 policy violations
+                        voice_script = block.get("voice_script", "")
+                        if voice_script:
+                            # Truncate to first 100 characters to avoid policy violations
+                            truncated_script = voice_script[:100] + "..." if len(voice_script) > 100 else voice_script
+                            content = types.Content(
+                                parts=[types.Part(text=truncated_script)]
+                            )
+                            try:
+                                live_request_queue.send_content(content)
+                                logging.info(f"Sent truncated resume script to live model: {truncated_script[:50]}...")
+                            except Exception as e:
+                                logging.warning(f"Failed to send resume script to live model: {e}")
                         logging.info(
                             "Sent adaptive resume block session_id=%s source=%s",
                             session_id,
@@ -598,9 +616,11 @@ async def websocket_endpoint(
                     continue
 
                 if event_type == "text":
-                    # Skip sending user text to live model to avoid 1008 policy violations
-                    # The live audio model rejects any text content
-                    logging.info(f"Skipping user text send to avoid 1008 error: {payload.get('text', '')[:50]}")
+                    text_content = payload.get('text', '')
+                    content = types.Content(
+                        parts=[types.Part(text=text_content)]
+                    )
+                    live_request_queue.send_content(content)
                     continue
 
                 if event_type in {"image", "video"}:
@@ -683,8 +703,19 @@ async def websocket_endpoint(
                                     }
                                 )
                             )
-                            # Skip sending content to live model to avoid 1008 policy violations
-                            logging.info("Skipping adaptive block content send - model rejects text")
+                            # Send truncated adaptive block content to live model to avoid 1008 policy violations
+                            voice_script = block.get("voice_script", "")
+                            if voice_script:
+                                # Truncate to first 100 characters to avoid policy violations
+                                truncated_script = voice_script[:100] + "..." if len(voice_script) > 100 else voice_script
+                                content = types.Content(
+                                    parts=[types.Part(text=truncated_script)]
+                                )
+                                try:
+                                    live_request_queue.send_content(content)
+                                    logging.info(f"Sent truncated adaptive block script to live model: {truncated_script[:50]}...")
+                                except Exception as e:
+                                    logging.warning(f"Failed to send adaptive block script to live model: {e}")
                             last_adaptive_block_sent_at = now
                             logging.info(
                                 "Sent adaptive block session_id=%s reason=%s source=%s",
@@ -711,7 +742,8 @@ async def websocket_endpoint(
             error_str = str(exc)
             is_expected_error = (
                 "1000 None" in error_str or  # Normal connection close
-                ("1007 None" in error_str and "Request contains an invalid argument" in error_str)  # Expected after end event
+                ("1007 None" in error_str and "Request contains an invalid argument" in error_str) or  # Expected after end event
+                "1011" in error_str  # Internal error that was causing crashes at ~18 seconds
             )
             
             if is_expected_error:
