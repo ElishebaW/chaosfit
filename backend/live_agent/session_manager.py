@@ -73,11 +73,15 @@ class SessionManager:
                 self._firestore = None
         else:
             logging.warning("Firestore disabled or library not available")
-        self._vertex = genai.Client(
-            vertexai=os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() == "true",
-            project=project,
-            location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"),
-        )
+        try:
+            self._vertex = genai.Client(
+                vertexai=os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() == "true",
+                project=project,
+                location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"),
+            )
+        except Exception as e:
+            logging.warning(f"Failed to initialize GenAI client: {e}")
+            self._vertex = None
         self._library = load_exercise_library()
 
     def start_session(
@@ -339,6 +343,9 @@ class SessionManager:
         recent_fatigue: float | None,
         exercise_history: list[str],
     ) -> dict[str, Any] | None:
+        if not self._vertex:
+            return None
+            
         prompt = build_next_block_prompt(
             time_remaining_sec=time_remaining_sec,
             recent_form_score=recent_form_score,

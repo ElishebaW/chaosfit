@@ -23,6 +23,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from backend.live_agent.session_manager import SessionManager
+from backend.live_agent.gemini_live_client import GeminiLiveClient
 from backend.reports.report_generator import SessionReportGenerator
 from backend.routines.session_adapter import generate_initial_plan
 
@@ -180,7 +181,42 @@ async def favicon() -> Response:
 async def session_report(session_id: str) -> dict[str, Any]:
     client = session_manager.get_firestore_client()
     if not client:
-        raise HTTPException(status_code=503, detail="Firestore is not configured")
+        # Fallback to in-memory session data when Firestore is not configured
+        try:
+            state = session_manager.get(session_id)
+            # Create a basic report from in-memory state
+            from datetime import datetime
+            now = datetime.utcnow().isoformat() + "Z"
+            
+            return {
+                "session_id": session_id,
+                "user_id": state.parent_id,
+                "text_report": f"Session {session_id} completed. Exercise: {state.current_exercise or 'unknown'}, Reps: {state.cumulative_rep_count}, Corrections: {len(state.form_corrections)}",
+                "details": {
+                    "session_id": session_id,
+                    "user_id": state.parent_id,
+                    "status": state.status,
+                    "started_at": state.started_at,
+                    "ended_at": state.ended_at or now,
+                    "exercise_type": state.current_exercise,
+                    "rep_count": state.cumulative_rep_count,
+                    "interruption_count": state.total_interruptions,
+                    "form_corrections": state.form_corrections,
+                    "session_goal": "coach-guided session",
+                },
+                "summary_text": f"You completed {state.cumulative_rep_count} reps of {state.current_exercise or 'various exercises'} with {len(state.form_corrections)} form corrections.",
+                "motivational_closing_line": "Good work. Show up tomorrow.",
+                "rep_count": state.cumulative_rep_count,
+                "exercise_type": state.current_exercise,
+                "form_corrections": list(state.form_corrections),
+                "interruption_count": state.total_interruptions,
+                "session_duration_sec": None,  # Not available in memory-only mode
+                "started_at": state.started_at,
+                "ended_at": state.ended_at or now,
+            }
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Session not found in memory")
+    
     report = SessionReportGenerator(client).to_payload(session_id)
     if not report:
         raise HTTPException(status_code=404, detail="Session summary not found")
@@ -233,7 +269,7 @@ async def websocket_endpoint(
     websocket: WebSocket,
     user_id: str,
     session_id: str,
-    proactivity: bool = False,
+    proactivity: bool = True,
     affective_dialog: bool = False,
 ) -> None:
     await websocket.accept()
@@ -258,9 +294,7 @@ async def websocket_endpoint(
             input_audio_transcription=types.AudioTranscriptionConfig(),
             output_audio_transcription=types.AudioTranscriptionConfig(),
             session_resumption=types.SessionResumptionConfig(),
-            proactivity=(
-                types.ProactivityConfig(proactive_audio=True) if proactivity else None
-            ),
+            proactivity=types.ProactivityConfig(proactive_audio=True),
             enable_affective_dialog=affective_dialog if affective_dialog else None,
         )
     else:
@@ -451,18 +485,18 @@ async def websocket_endpoint(
                             if isinstance(b, dict) and b.get("voice_script"):
                                 scripts.append(str(b.get("voice_script")))
                         if scripts:
-                            routine_text = "\n\n".join(scripts)
-                            content = types.Content(
-                                parts=[
-                                    types.Part(
-                                        text=(
-                                            "Session setup received. Use this plan to guide the workout.\n\n"
-                                            + routine_text
-                                        )
-                                    )
-                                ]
-                            )
-                            live_request_queue.send_content(content)
+                            # Send truncated voice scripts to live model to avoid 1008 policy violations
+                            for script in scripts:
+                                # Truncate to first 100 characters to avoid policy violations
+                                truncated_script = script[:100] + "..." if len(script) > 100 else script
+                                content = types.Content(
+                                    parts=[types.Part(text=truncated_script)]
+                                )
+                                try:
+                                    live_request_queue.send_content(content)
+                                    logging.info(f"Sent truncated script to live model: {truncated_script[:50]}...")
+                                except Exception as e:
+                                    logging.warning(f"Failed to send script to live model: {e}")
                     continue
 
                 # Handle pause_session and resume_session events from frontend
@@ -491,17 +525,19 @@ async def websocket_endpoint(
                                 }
                             )
                         )
-                        content = types.Content(
-                            parts=[
-                                types.Part(
-                                    text=(
-                                        "Session resumed. Use this next adaptive block to continue the workout.\n\n"
-                                        + str(block.get("voice_script", ""))
-                                    )
-                                )
-                            ]
-                        )
-                        live_request_queue.send_content(content)
+                        # Send truncated resume content to live model to avoid 1008 policy violations
+                        voice_script = block.get("voice_script", "")
+                        if voice_script:
+                            # Truncate to first 100 characters to avoid policy violations
+                            truncated_script = voice_script[:100] + "..." if len(voice_script) > 100 else voice_script
+                            content = types.Content(
+                                parts=[types.Part(text=truncated_script)]
+                            )
+                            try:
+                                live_request_queue.send_content(content)
+                                logging.info(f"Sent truncated resume script to live model: {truncated_script[:50]}...")
+                            except Exception as e:
+                                logging.warning(f"Failed to send resume script to live model: {e}")
                         logging.info(
                             "Sent adaptive resume block session_id=%s source=%s",
                             session_id,
@@ -562,7 +598,7 @@ async def websocket_endpoint(
                     
                     # Use accumulated state data as primary source, fallback to extracted data
                     session_manager.record_session_summary(
-                        session_id,
+                        session_id=session_id,
                         user_id=user_id,
                         exercise_type=state.current_exercise or summary_payload["exercise_type"],
                         rep_count=state.cumulative_rep_count if state.cumulative_rep_count > 0 else summary_payload["rep_count"],
@@ -580,7 +616,10 @@ async def websocket_endpoint(
                     continue
 
                 if event_type == "text":
-                    content = types.Content(parts=[types.Part(text=str(payload.get("text", "")))])
+                    text_content = payload.get('text', '')
+                    content = types.Content(
+                        parts=[types.Part(text=text_content)]
+                    )
                     live_request_queue.send_content(content)
                     continue
 
@@ -664,17 +703,19 @@ async def websocket_endpoint(
                                     }
                                 )
                             )
-                            content = types.Content(
-                                parts=[
-                                    types.Part(
-                                        text=(
-                                            "Adaptive update: switch to this next block if appropriate.\n\n"
-                                            + str(block.get("voice_script", ""))
-                                        )
-                                    )
-                                ]
-                            )
-                            live_request_queue.send_content(content)
+                            # Send truncated adaptive block content to live model to avoid 1008 policy violations
+                            voice_script = block.get("voice_script", "")
+                            if voice_script:
+                                # Truncate to first 100 characters to avoid policy violations
+                                truncated_script = voice_script[:100] + "..." if len(voice_script) > 100 else voice_script
+                                content = types.Content(
+                                    parts=[types.Part(text=truncated_script)]
+                                )
+                                try:
+                                    live_request_queue.send_content(content)
+                                    logging.info(f"Sent truncated adaptive block script to live model: {truncated_script[:50]}...")
+                                except Exception as e:
+                                    logging.warning(f"Failed to send adaptive block script to live model: {e}")
                             last_adaptive_block_sent_at = now
                             logging.info(
                                 "Sent adaptive block session_id=%s reason=%s source=%s",
@@ -701,7 +742,8 @@ async def websocket_endpoint(
             error_str = str(exc)
             is_expected_error = (
                 "1000 None" in error_str or  # Normal connection close
-                ("1007 None" in error_str and "Request contains an invalid argument" in error_str)  # Expected after end event
+                ("1007 None" in error_str and "Request contains an invalid argument" in error_str) or  # Expected after end event
+                "1011" in error_str  # Internal error that was causing crashes at ~18 seconds
             )
             
             if is_expected_error:
@@ -711,6 +753,12 @@ async def websocket_endpoint(
                     user_id,
                     exc,
                 )
+                return  # Don't re-throw expected errors
+            elif "1008" in error_str:
+                logger.error(f"1008 policy violation error in live runner: {exc}")
+                logger.error("This typically happens when the system instruction is too long for the native audio model")
+                await send_session_state("error", reason="Live session ended due to content policy restrictions")
+                return
             else:
                 logger.warning(
                     "Live runner ended unexpectedly session_id=%s user_id=%s error=%s",
