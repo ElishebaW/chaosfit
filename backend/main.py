@@ -24,6 +24,33 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from backend.live_agent.session_manager import SessionManager
 from backend.reports.report_generator import SessionReportGenerator
+from backend.routines.session_adapter import generate_initial_plan
+
+# ⚠️ ADAPTIVE SCHEDULING INTEGRATION GAP:
+# The backend has comprehensive adaptive scheduling capabilities in:
+# - backend/routines/adaptive_scheduler.py (exercise selection, fatigue adaptation)
+# - backend/routines/time_mode_engine.py (5/12/20 minute routines)
+# - backend/routines/__init__.py (exports all scheduling functions)
+#
+# However, main.py currently does NOT import or use these modules.
+# Adaptive scheduling is only used in session_manager.py for fallback block generation.
+#
+# ✅ CURRENT USAGE:
+# - session_manager.py: Uses generate_next_unknown_time_block() as fallback (line 280)
+# - session_manager.py: Creates AdaptiveContext for remaining time adjustments
+#
+# ⚠️ MISSING INTEGRATION POINTS:
+# 1. Session setup - no timeboxed routine generation for 5/12/20 minute sessions
+# 2. WebSocket endpoints - no adaptive scheduling calls during session
+# 3. Coach modifications - no dynamic exercise adjustment based on fatigue/form
+# 4. Space constraints - no equipment/space optimization during session
+# 5. Resume logic - no adaptive scheduling when resuming after interruption
+#
+# RECOMMENDED INTEGRATIONS:
+# - Import generate_timeboxed_routine for known-duration sessions
+# - Call adaptive scheduling on session start with user preferences
+# - Use recommend_next_block when coach needs exercise modifications
+# - Adjust routines on resume based on remaining time and fatigue
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -211,6 +238,8 @@ async def websocket_endpoint(
 ) -> None:
     await websocket.accept()
 
+    last_adaptive_block_sent_at: float = 0.0
+
     async def safe_send_text(payload: str) -> None:
         if websocket.application_state != WebSocketState.CONNECTED:
             return
@@ -339,6 +368,149 @@ async def websocket_endpoint(
                     await send_session_state("resumed")
                     continue
 
+                if event_type == "session_setup":
+                    duration_raw = payload.get("duration_minutes")
+                    duration_minutes = _safe_int(duration_raw)
+                    equipment_available = payload.get("equipment_available")
+                    if not isinstance(equipment_available, list):
+                        equipment_available = []
+                    prefer_low_impact = bool(payload.get("prefer_low_impact", False))
+                    level = _safe_str(payload.get("level"))
+
+                    print(f"DEBUG: Session setup received - duration: {duration_minutes}, equipment: {equipment_available}, level: {level}")
+
+                    try:
+                        plan = generate_initial_plan(
+                            duration_minutes=duration_minutes,
+                            equipment_available=equipment_available,
+                            prefer_low_impact=prefer_low_impact,
+                            level=level,
+                        )
+                        print(f"DEBUG: Plan generated successfully - mode: {plan.get('mode')}, duration: {plan.get('duration_minutes')}")
+                    except Exception as e:
+                        print(f"ERROR: Failed to generate plan: {e}")
+                        # Generate a fallback plan
+                        plan = generate_initial_plan(
+                            duration_minutes=None,
+                            equipment_available=equipment_available,
+                            prefer_low_impact=prefer_low_impact,
+                            level=level,
+                        )
+
+                    session_manager.append_event(
+                        session_id=session_id,
+                        event_type="session_setup",
+                        payload={
+                            "duration_minutes": duration_minutes,
+                            "equipment_available": equipment_available,
+                            "prefer_low_impact": prefer_low_impact,
+                            "level": level,
+                            "routine_plan": plan,
+                        },
+                    )
+
+                    await safe_send_text(
+                        json.dumps(
+                            {
+                                "type": "session_setup_confirmed",
+                                "routine_plan": plan,
+                            }
+                        )
+                    )
+
+                    # Start automatic session end timer for timeboxed sessions
+                    if plan.get("mode") == "timeboxed" and duration_minutes and duration_minutes > 0:
+                        async def end_session_after_duration():
+                            try:
+                                await asyncio.sleep(duration_minutes * 60)  # Convert minutes to seconds
+                                logging.info(f"Auto-ending session {session_id} after {duration_minutes} minutes")
+                                
+                                # Check if session is still active before ending
+                                try:
+                                    state = session_manager.get(session_id)
+                                    if hasattr(state, 'status') and state.status in ["ended", "completed"]:
+                                        logging.info(f"Session {session_id} already ended, skipping auto-end")
+                                        return
+                                except:
+                                    # If we can't check status, proceed with ending
+                                    pass
+                                
+                                # Send session end event
+                                await safe_send_text(json.dumps({"type": "session_end", "reason": "duration_complete"}))
+                            except Exception as e:
+                                logging.error(f"Failed to auto-end session {session_id}: {e}")
+                        
+                        # Start the timer in the background
+                        asyncio.create_task(end_session_after_duration())
+                        logging.info(f"Started auto-end timer for {duration_minutes} minute session")
+
+                    blocks = plan.get("blocks") if isinstance(plan, dict) else None
+                    if isinstance(blocks, list) and blocks:
+                        scripts: list[str] = []
+                        for b in blocks:
+                            if isinstance(b, dict) and b.get("voice_script"):
+                                scripts.append(str(b.get("voice_script")))
+                        if scripts:
+                            routine_text = "\n\n".join(scripts)
+                            content = types.Content(
+                                parts=[
+                                    types.Part(
+                                        text=(
+                                            "Session setup received. Use this plan to guide the workout.\n\n"
+                                            + routine_text
+                                        )
+                                    )
+                                ]
+                            )
+                            live_request_queue.send_content(content)
+                    continue
+
+                # Handle pause_session and resume_session events from frontend
+                if event_type == "pause_session":
+                    reason = str(payload.get("reason", "user_pause"))
+                    session_manager.pause_session(session_id, reason=reason)
+                    await send_session_state("paused", reason=reason)
+                    logging.info(f"Session {session_id} paused by user at {payload.get('timestamp')}")
+                    continue
+
+                if event_type == "resume_session":
+                    pause_duration = payload.get("pause_duration_seconds", 0)
+                    session_manager.resume_session(session_id, pause_duration_seconds=float(pause_duration))
+                    await send_session_state("resumed")
+                    logging.info(f"Session {session_id} resumed by user after {pause_duration}s pause at {payload.get('timestamp')}")
+
+                    try:
+                        state = session_manager.get(session_id)
+                        block = session_manager.generate_next_block(session_id)
+                        await safe_send_text(
+                            json.dumps(
+                                {
+                                    "type": "adaptive_block",
+                                    "reason": "resume",
+                                    "block": block,
+                                }
+                            )
+                        )
+                        content = types.Content(
+                            parts=[
+                                types.Part(
+                                    text=(
+                                        "Session resumed. Use this next adaptive block to continue the workout.\n\n"
+                                        + str(block.get("voice_script", ""))
+                                    )
+                                )
+                            ]
+                        )
+                        live_request_queue.send_content(content)
+                        logging.info(
+                            "Sent adaptive resume block session_id=%s source=%s",
+                            session_id,
+                            block.get("source"),
+                        )
+                    except Exception:
+                        logger.exception("Failed to generate resume adaptive block")
+                    continue
+
                 if event_type == "end":
                     logging.info(f"Processing end event for session {session_id}")
                     summary_payload = _extract_end_summary(payload)
@@ -365,6 +537,41 @@ async def websocket_endpoint(
 
                     # Session summary is already written by session_manager.record_session_summary()
                     # No need for separate async call
+                    await send_session_state("ended")
+                    live_request_queue.close()
+                    return
+
+                if event_type == "session_end":
+                    reason = payload.get("reason", "unknown")
+                    logging.info(f"Processing automatic session end for session {session_id}, reason: {reason}")
+                    
+                    # Create a summary payload for automatic end
+                    summary_payload = {
+                        "exercise_type": "unknown",
+                        "rep_count": 0,
+                        "form_corrections": [],
+                        "session_goal": f"{duration_minutes}-minute workout" if duration_minutes else "timeboxed session"
+                    }
+                    
+                    session_manager.complete_session(session_id)
+                    logging.info("Auto-session completed, calling record_session_summary")
+                    
+                    # Get current state for accurate data
+                    state = session_manager.get(session_id)
+                    logging.info(f"Session state before auto-summary: exercise={state.current_exercise}, reps={state.cumulative_rep_count}, interruptions={state.total_interruptions}, corrections={len(state.form_corrections)}")
+                    
+                    # Use accumulated state data as primary source, fallback to extracted data
+                    session_manager.record_session_summary(
+                        session_id,
+                        user_id=user_id,
+                        exercise_type=state.current_exercise or summary_payload["exercise_type"],
+                        rep_count=state.cumulative_rep_count if state.cumulative_rep_count > 0 else summary_payload["rep_count"],
+                        interruption_count=interrupted_count + state.coach_interruptions,
+                        form_corrections=state.form_corrections if state.form_corrections else summary_payload["form_corrections"],
+                        session_goal=summary_payload["session_goal"],
+                    )
+                    logging.info("Auto-session summary recorded")
+
                     await send_session_state("ended")
                     live_request_queue.close()
                     return
@@ -405,6 +612,7 @@ async def websocket_endpoint(
 
     async def downstream_task() -> None:
         nonlocal interrupted_count
+        nonlocal last_adaptive_block_sent_at
         try:
             async for event in runner.run_live(
                 user_id=user_id,
@@ -418,6 +626,64 @@ async def websocket_endpoint(
                 # Handle coach tool responses for exercise data
                 if hasattr(event, 'tool_response') and event.tool_response is not None:
                     await _process_coach_tool_event(event, session_id, session_manager)
+
+                    try:
+                        response_data = event.tool_response
+                        event_data = response_data.get("event") if isinstance(response_data, dict) else None
+                        should_adapt = False
+                        adapt_reason: str | None = None
+
+                        if isinstance(event_data, dict):
+                            if bool(event_data.get("interruption")):
+                                should_adapt = True
+                                adapt_reason = "interruption"
+                            elif event_data.get("form_corrections"):
+                                should_adapt = True
+                                adapt_reason = "form_correction"
+
+                        state = session_manager.get(session_id)
+                        if state.recent_fatigue is not None and state.recent_fatigue >= 0.75:
+                            should_adapt = True
+                            adapt_reason = adapt_reason or "fatigue"
+                        if state.recent_form_score is not None and state.recent_form_score <= 0.45:
+                            should_adapt = True
+                            adapt_reason = adapt_reason or "low_form"
+                        if state.time_remaining_sec is not None and state.time_remaining_sec <= 75:
+                            should_adapt = True
+                            adapt_reason = adapt_reason or "time_pressure"
+
+                        now = asyncio.get_running_loop().time()
+                        if should_adapt and (now - last_adaptive_block_sent_at) >= 20.0:
+                            block = session_manager.generate_next_block(session_id)
+                            await safe_send_text(
+                                json.dumps(
+                                    {
+                                        "type": "adaptive_block",
+                                        "reason": adapt_reason or "auto",
+                                        "block": block,
+                                    }
+                                )
+                            )
+                            content = types.Content(
+                                parts=[
+                                    types.Part(
+                                        text=(
+                                            "Adaptive update: switch to this next block if appropriate.\n\n"
+                                            + str(block.get("voice_script", ""))
+                                        )
+                                    )
+                                ]
+                            )
+                            live_request_queue.send_content(content)
+                            last_adaptive_block_sent_at = now
+                            logging.info(
+                                "Sent adaptive block session_id=%s reason=%s source=%s",
+                                session_id,
+                                adapt_reason,
+                                block.get("source"),
+                            )
+                    except Exception:
+                        logger.exception("Failed to generate adaptive block")
                 
                 if bool(getattr(event, "interrupted", False)):
                     interrupted_count += 1
