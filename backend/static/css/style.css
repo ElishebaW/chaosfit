@@ -282,6 +282,104 @@ body {
   animation: pulse 2s ease-in-out infinite;
 }
 
+/* Session Setup Panel */
+.session-setup-panel {
+  position: fixed;
+  bottom: calc(20vh + 80px);
+  left: 24px;
+  right: 24px;
+  background: var(--bg-overlay);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  z-index: 150;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+.setup-header h3 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 16px 0;
+  text-align: center;
+}
+
+.setup-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+}
+
+.setup-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setup-group label {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.setup-select {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.setup-select:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--primary-color);
+}
+
+.setup-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2);
+}
+
+.equipment-checkboxes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.equipment-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--text-primary);
+  transition: color 0.2s ease;
+}
+
+.equipment-label:hover {
+  color: var(--primary-color);
+}
+
+.equipment-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary-color);
+  cursor: pointer;
+}
+
 /* Session Controls */
 .session-controls {
   position: fixed;

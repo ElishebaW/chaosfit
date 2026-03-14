@@ -193,6 +193,7 @@ class CoachResponseHandler:
         
         if extracted_data["exercise_type"]:
             event["exercise_type"] = extracted_data["exercise_type"]
+            event["exercise_id"] = extracted_data["exercise_type"]  # Add exercise_id for session manager
         
         if extracted_data["is_interruption"]:
             event["interruption"] = True

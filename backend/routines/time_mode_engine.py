@@ -61,15 +61,18 @@ def generate_timeboxed_routine(
 ) -> RoutinePlan:
     """
     Generates a simple, deterministic plan for demos:
+    - 1 minute: 0.25m warmup, 0.5m main, 0.25m cooldown
     - 5 minutes: 1m warmup, 3m main, 1m cooldown
     - 12 minutes: 2m warmup, 8m main, 2m cooldown
+    - 15 minutes: 2.5m warmup, 10m main, 2.5m cooldown
     - 20 minutes: 3m warmup, 14m main, 3m cooldown
+    - 30 minutes: 5m warmup, 20m main, 5m cooldown
     """
     prefs = prefs or RoutinePreferences()
     library = library or load_exercise_library()
 
-    if duration_minutes not in (5, 12, 20):
-        raise ValueError("duration_minutes must be one of: 5, 12, 20")
+    if duration_minutes not in (1, 5, 12, 15, 20, 30):
+        raise ValueError("duration_minutes must be one of: 1, 5, 12, 15, 20, 30")
 
     equipment = set(prefs.equipment_available)
     ctx = AdaptiveContext(
@@ -79,12 +82,18 @@ def generate_timeboxed_routine(
         level=prefs.level,
     )
 
-    if duration_minutes == 5:
+    if duration_minutes == 1:
+        warmup_sec, main_sec, cooldown_sec = 15, 30, 15
+    elif duration_minutes == 5:
         warmup_sec, main_sec, cooldown_sec = 60, 180, 60
     elif duration_minutes == 12:
         warmup_sec, main_sec, cooldown_sec = 120, 480, 120
-    else:
+    elif duration_minutes == 15:
+        warmup_sec, main_sec, cooldown_sec = 150, 600, 150
+    elif duration_minutes == 20:
         warmup_sec, main_sec, cooldown_sec = 180, 840, 180
+    else:  # 30 minutes
+        warmup_sec, main_sec, cooldown_sec = 300, 1200, 300
 
     # Warmup: low-impact cardio + hinge + squat pattern
     cardio = "step_jack" if prefs.prefer_low_impact else "jumping_jack"

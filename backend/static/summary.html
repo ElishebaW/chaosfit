@@ -216,7 +216,7 @@
           <div class="stat">
             <div class="stat-number" id="duration">--:--</div>
             <div class="stat-label">SESSION DURATION</div>
-            <div class="stat-meta" id="interruptions">Interruptions: --</div>
+            <div class="stat-meta" id="sessionTimes">--</div>
           </div>
         </section>
 
@@ -224,7 +224,7 @@
           <div class="stat">
             <div class="stat-number" id="correctionsCount">--</div>
             <div class="stat-label">FORM CORRECTIONS</div>
-            <div class="stat-meta" id="timestamps">--</div>
+            <div class="stat-meta" id="interruptionMeta">Interruptions: --</div>
           </div>
         </section>
 
@@ -281,9 +281,11 @@
         document.getElementById('repCount').textContent = repCount;
         document.getElementById('exerciseType').textContent = `Exercise: ${String(exerciseType).toUpperCase()}`;
         document.getElementById('duration').textContent = formatDuration(durationSec);
-        document.getElementById('interruptions').textContent = `Interruptions: ${interruptions}`;
+        document.getElementById('sessionTimes').textContent = startedAt && endedAt ? `${startedAt} → ${endedAt}` : (startedAt || endedAt || '');
+        document.getElementById('interruptionMeta').textContent = `Interruptions: ${interruptions}`;
         document.getElementById('correctionsCount').textContent = Array.isArray(corrections) ? corrections.length : 0;
-        document.getElementById('timestamps').textContent = startedAt && endedAt ? `${startedAt} → ${endedAt}` : (startedAt || endedAt || '');
+        document.getElementById('interruptionMeta').textContent = `Interruptions: ${interruptions}`;
+        document.getElementById('correctionMeta').textContent = Array.isArray(corrections) && corrections.length > 0 ? 'View details below' : 'None';
 
         const summaryText = report.summary_text || report.text_report || 'Summary unavailable.';
         document.getElementById('summaryText').textContent = summaryText;
@@ -320,10 +322,18 @@
         const startNewBtn = document.getElementById('startNew');
         const backBtn = document.getElementById('backToLive');
 
+        // Ensure buttons are always enabled
+        if (startNewBtn) startNewBtn.disabled = false;
+        if (backBtn) backBtn.disabled = false;
+
+        console.log('Buttons found:', !!startNewBtn, !!backBtn);
+
         startNewBtn.addEventListener('click', () => {
+          console.log('Start New button clicked');
           window.location.href = '/';
         });
         backBtn.addEventListener('click', () => {
+          console.log('Back to Live button clicked');
           window.location.href = '/';
         });
 

@@ -62,6 +62,8 @@ class SessionSummary:
     interruption_count: int
     form_corrections: tuple[str, ...] = field(default_factory=tuple)
     session_goal: str | None = None
+    pause_count: int = 0  # Number of pauses during session
+    total_pause_time_seconds: float = 0.0  # Total pause time in seconds
     created_at: str = field(default_factory=utc_now_iso)
 
     def to_dict(self) -> dict[str, Any]:
@@ -75,6 +77,8 @@ class SessionSummary:
             "interruption_count": self.interruption_count,
             "form_corrections": list(self.form_corrections),
             "session_goal": self.session_goal,
+            "pause_count": self.pause_count,
+            "total_pause_time_seconds": self.total_pause_time_seconds,
             "created_at": self.created_at,
         }
 
@@ -91,6 +95,8 @@ class SessionSummary:
             interruption_count=int(data.get("interruption_count", 0)),
             form_corrections=corrections,
             session_goal=data.get("session_goal"),
+            pause_count=int(data.get("pause_count", 0)),
+            total_pause_time_seconds=float(data.get("total_pause_time_seconds", 0.0)),
             created_at=str(data.get("created_at") or utc_now_iso()),
         )
 

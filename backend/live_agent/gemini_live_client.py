@@ -100,10 +100,25 @@ class GeminiLiveClient:
         session_goal: str | None = None,
     ) -> None:
         model = self.resolve_live_model()
+        
+        # Truncate session goal to avoid 1008 policy violations
+        goal = session_goal or "Coach bodyweight workouts safely in real time."
+        if len(goal) > 100:
+            goal = goal[:100] + "..."
+        
+        system_instruction = build_live_system_instruction(session_goal=goal)
+        
+        # Further truncate if instruction is too long for native audio model
+        if "native-audio" in model.lower() and len(system_instruction) > 300:
+            system_instruction = (
+                "You are ChaosFit Coach. Provide short form feedback.\n"
+                "Prioritize safety. Interrupt risky form with <= 12 words.\n"
+                f"Goal: {goal}"
+            )
 
         config = {
             "response_modalities": ["AUDIO"],
-            "system_instruction": build_live_system_instruction(session_goal=session_goal),
+            "system_instruction": system_instruction,
             # Mirrors ADK guidance: transcription + native audio output for low-latency coaching.
             "realtime_input_config": {
                 "automatic_activity_detection": {
@@ -124,6 +139,13 @@ class GeminiLiveClient:
         }
 
         await on_event({"type": "session_started", "model": model})
+        
+        # Log instruction length for debugging 1008 errors
+        import logging
+        logging.info(f"Live session starting with model {model}")
+        logging.info(f"System instruction length: {len(system_instruction)} chars")
+        if "native-audio" in model.lower():
+            logging.warning(f"Using native audio model with truncated instruction to avoid 1008 errors")
 
         async with self.client.aio.live.connect(model=model, config=config) as session:
             receive_task = asyncio.create_task(self._receive_loop(session=session, on_event=on_event))
@@ -190,56 +212,71 @@ class GeminiLiveClient:
         session: Any,
         on_event: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> None:
-        async for message in session.receive():
-            server_content = getattr(message, "server_content", None)
-            if not server_content:
-                continue
+        try:
+            async for message in session.receive():
+                server_content = getattr(message, "server_content", None)
+                if not server_content:
+                    continue
 
-            interrupted = bool(getattr(server_content, "interrupted", False))
+                interrupted = bool(getattr(server_content, "interrupted", False))
 
-            input_transcript = self._extract_text(getattr(server_content, "input_transcription", None))
-            if input_transcript:
+                input_transcript = self._extract_text(getattr(server_content, "input_transcription", None))
+                if input_transcript:
+                    await on_event({
+                        "type": "user_transcript",
+                        "text": input_transcript,
+                    })
+
+                output_transcript = self._extract_text(getattr(server_content, "output_transcription", None))
+                if output_transcript:
+                    await on_event({
+                        "type": "model_transcript",
+                        "text": output_transcript,
+                    })
+
+                model_turn = getattr(server_content, "model_turn", None)
+                if model_turn:
+                    for part in getattr(model_turn, "parts", []) or []:
+                        text = getattr(part, "text", None)
+                        if text:
+                            await on_event(
+                                {
+                                    "type": "model_text",
+                                    "text": text,
+                                    "interrupt": interrupted or text.strip().upper().startswith("CORRECTION:"),
+                                }
+                            )
+
+                        inline_data = getattr(part, "inline_data", None)
+                        if inline_data and getattr(inline_data, "data", None):
+                            await on_event(
+                                {
+                                    "type": "model_audio",
+                                    "mime_type": getattr(inline_data, "mime_type", "audio/pcm;rate=24000"),
+                                    "data": base64.b64encode(inline_data.data).decode("ascii"),
+                                    "interrupt": interrupted,
+                                }
+                            )
+
+                if interrupted:
+                    await on_event({"type": "interrupted"})
+
+                if getattr(server_content, "turn_complete", False):
+                    await on_event({"type": "turn_complete"})
+                    
+        except Exception as e:
+            # Handle 1008 policy violation errors gracefully
+            if "1008" in str(e) or "policy violation" in str(e).lower():
+                import logging
+                logging.error(f"1008 policy violation error in receive loop: {e}")
+                logging.error("This typically happens when the system instruction is too long for the native audio model")
                 await on_event({
-                    "type": "user_transcript",
-                    "text": input_transcript,
+                    "type": "error", 
+                    "message": "Live session ended due to content policy restrictions. Try using a shorter session goal."
                 })
-
-            output_transcript = self._extract_text(getattr(server_content, "output_transcription", None))
-            if output_transcript:
-                await on_event({
-                    "type": "model_transcript",
-                    "text": output_transcript,
-                })
-
-            model_turn = getattr(server_content, "model_turn", None)
-            if model_turn:
-                for part in getattr(model_turn, "parts", []) or []:
-                    text = getattr(part, "text", None)
-                    if text:
-                        await on_event(
-                            {
-                                "type": "model_text",
-                                "text": text,
-                                "interrupt": interrupted or text.strip().upper().startswith("CORRECTION:"),
-                            }
-                        )
-
-                    inline_data = getattr(part, "inline_data", None)
-                    if inline_data and getattr(inline_data, "data", None):
-                        await on_event(
-                            {
-                                "type": "model_audio",
-                                "mime_type": getattr(inline_data, "mime_type", "audio/pcm;rate=24000"),
-                                "data": base64.b64encode(inline_data.data).decode("ascii"),
-                                "interrupt": interrupted,
-                            }
-                        )
-
-            if interrupted:
-                await on_event({"type": "interrupted"})
-
-            if getattr(server_content, "turn_complete", False):
-                await on_event({"type": "turn_complete"})
+            else:
+                # Re-raise other exceptions
+                raise
 
     @staticmethod
     def _extract_text(obj: Any) -> str | None:
