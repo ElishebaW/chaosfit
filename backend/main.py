@@ -360,6 +360,7 @@ async def websocket_endpoint(
                     # Get current state for accurate data
                     state = session_manager.get(session_id)
                     logging.info(f"Session state before summary: exercise={state.current_exercise}, reps={state.cumulative_rep_count}, interruptions={state.total_interruptions}, corrections={len(state.form_corrections)}")
+                    logging.info(f"form_corrections at summary time: {state.form_corrections}")
                     
                     # Use accumulated state data as primary source, fallback to extracted data
                     session_manager.record_session_summary(
