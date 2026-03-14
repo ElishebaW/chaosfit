@@ -1,5 +1,5 @@
 [project]
-name = "ChaosFit"
+name = "chaosFit"
 version = "0.1.0"
 description = "ChaosFit application"
 readme = "README.md"
@@ -46,5 +46,5 @@ dev-dependencies = []
 packages = ["app"]
 
 [tool.hatch.build.targets.wheel.shared-data]
-"app/static" = "share/chaosFit/static"
-"app/.env" = "share/chaosFit/.env.template"
+"app/static" = "share/chaosfit/static"
+"app/.env" = "share/chaosfit/.env.template"
