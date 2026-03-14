@@ -146,7 +146,7 @@ class SessionReportGenerator:
 
         duration_sec = self._duration_seconds(summary)
         gemini_bits = self._generate_gemini_summary(summary, duration_sec=duration_sec) or {}
-        summary_text = gemini_bits.get("summary_text") or self.format_summary(summary)
+        summary_text = gemini_bits.get("summary_text")
         motivational_closing_line = gemini_bits.get("motivational_closing_line") or "Good work. Show up tomorrow."
 
         return {

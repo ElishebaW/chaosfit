@@ -285,10 +285,21 @@
         document.getElementById('interruptionMeta').textContent = `Interruptions: ${interruptions}`;
         document.getElementById('correctionsCount').textContent = Array.isArray(corrections) ? corrections.length : 0;
         document.getElementById('interruptionMeta').textContent = `Interruptions: ${interruptions}`;
-        document.getElementById('correctionMeta').textContent = Array.isArray(corrections) && corrections.length > 0 ? 'View details below' : 'None';
 
-        const summaryText = report.summary_text || report.text_report || 'Summary unavailable.';
-        document.getElementById('summaryText').textContent = summaryText;
+        // Show form corrections in summary text if available, otherwise fallback to summary
+        let summaryText;
+        if (Array.isArray(corrections) && corrections.length > 0) {
+          summaryText = corrections.join(' ');
+        } else {
+          summaryText = report.summary_text || report.text_report || '';
+        }
+        const summaryEl = document.getElementById('summaryText');
+        // Hide the summary text block if it's empty or a raw log string
+        if (!summaryText || /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(summaryText)) {
+          summaryEl.style.display = 'none';
+        } else {
+          summaryEl.textContent = summaryText;
+        }
         document.getElementById('closingLine').textContent = report.motivational_closing_line || 'Good work. Show up tomorrow.';
 
         const subtitle = `Session ${report.session_id || details.session_id || ''}`.trim();
@@ -349,9 +360,23 @@
           const report = await loadReport(sessionId);
           render(report);
         } catch (e) {
-          document.getElementById('subtitle').textContent = `Session ${sessionId}`;
-          document.getElementById('summaryText').textContent = 'Could not load session summary yet. If you just ended the session, give it a second and refresh.';
-          document.getElementById('closingLine').textContent = '';
+          let retries = 0;
+          const maxRetries = 6;
+          const poll = setInterval(async () => {
+            retries++;
+            try {
+              const report = await loadReport(sessionId);
+              clearInterval(poll);
+              render(report);
+            } catch (err) {
+              if (retries >= maxRetries) {
+                clearInterval(poll);
+                document.getElementById('subtitle').textContent = `Session ${sessionId}`;
+                document.getElementById('summaryText').textContent = 'Could not load session summary yet. If you just ended the session, give it a second and refresh.';
+                document.getElementById('closingLine').textContent = '';
+              }
+            }
+          }, 1500);
         }
       })();
     </script>
