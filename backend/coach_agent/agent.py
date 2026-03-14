@@ -18,6 +18,11 @@ agent = Agent(
             "COACH_SESSION_GOAL",
             "Coach in real time, interrupt risky form, and keep corrections short and actionable.",
         )
-    ),
+    )
+    + "\n\nCRITICAL: ALWAYS call emit_exercise_data tool with session_id for ANY coaching feedback. "
+    + "Use for: form corrections, exercise instructions, rep counts, exercise types. "
+    + "Examples: emit_exercise_data(text='Keep your chest up', session_id='demo-session-123') "
+    + "or emit_exercise_data(text='Do 10 air_squats', session_id='demo-session-123'). "
+    + "Key exercises: air_squat, push_up, plank, reverse_lunge, mountain_climber, jumping_jack.",
     tools=[emit_exercise_data_tool],
 )

@@ -425,6 +425,14 @@ body {
   border-color: var(--success-color);
 }
 
+.pause-btn {
+  border-color: #f59e0b; /* Amber color for pause */
+}
+
+.resume-btn {
+  border-color: var(--success-color);
+}
+
 .stop-btn {
   border-color: var(--danger-color);
 }
