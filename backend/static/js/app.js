@@ -74,6 +74,8 @@ const statusIndicator = document.getElementById("statusIndicator");
 const statusText = document.getElementById("statusText");
 const startSessionButton = document.getElementById("startSession");
 const stopSessionButton = document.getElementById("stopSession");
+const startSessionBtn = document.getElementById("startSessionBtn");
+const stopSessionBtn = document.getElementById("stopSessionBtn");
 const sessionStatusText = document.getElementById("sessionStatus");
 const repCountEl = document.getElementById("repCount");
 const incrementRepButton = document.getElementById("incrementRep");
@@ -106,6 +108,11 @@ let sessionGoal = null;
 let interruptionBannerTimer = null;
 let isSessionPaused = false;
 let currentPauseReason = null;
+
+// Pause/Resume tracking variables
+let sessionPaused = false;
+let pauseStartTime = null;
+let totalPauseTime = 0;
 
 let hudRepCount = 0;
 let hudTimerSeconds = 0;
@@ -150,8 +157,7 @@ function stopHudTimer() {
   }
 }
 
-async function startHudSession() {
-  if (startSessionButton) startSessionButton.disabled = true;
+async function startSession() {
   try {
     // Start audio first (required for coaching interaction)
     if (!is_audio && !isAudioStarting) {
@@ -188,6 +194,24 @@ async function stopHudSession() {
     }
     
     await stopVideoStream();
+    
+    // Stop combined media stream
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+    }
+    
+    // Clear video elements
+    const videoElement = document.getElementById("cameraPreview");
+    const videoBgElement = document.getElementById("cameraPreviewBg");
+    
+    if (videoElement) {
+      videoElement.srcObject = null;
+    }
+    
+    if (videoBgElement) {
+      videoBgElement.srcObject = null;
+    }
   } catch (e) {
     console.warn("Failed to stop session:", e);
   }
@@ -200,85 +224,89 @@ async function stopHudSession() {
     // Fall through to local UI reset if navigation fails.
   }
 
-  // Reset exercise tracking
-  currentExercise = null;
-  exerciseRepCount = 0;
-  formCorrections = [];
-  sessionGoal = null;
-  
-  // Reset session status display
-  if (sessionStatusText) {
-    sessionStatusText.textContent = "● READY";
-  }
-
-  hudTimerRunning = false;
-  if (hudTimerInterval) {
-    clearInterval(hudTimerInterval);
-    hudTimerInterval = null;
-  }
+  // Reset HUD
   hudRepCount = 0;
   hudTimerSeconds = 0;
   setHudRepCount(0);
   setHudTimerSeconds(0);
   setHudSessionStatus(false);
 
-  if (startSessionButton) {
-    startSessionButton.style.display = "";
-    startSessionButton.disabled = !(websocket && websocket.readyState === WebSocket.OPEN);
+  if (startSessionBtn) {
+    startSessionBtn.style.display = "inline-block";
   }
   if (stopSessionButton) stopSessionButton.style.display = "none";
   if (pauseSessionButton) pauseSessionButton.style.display = "none";
   if (resumeSessionButton) resumeSessionButton.style.display = "none";
 }
 
-async function pauseHudSession() {
+async function stopSession() {
   try {
-    // Send pause event to backend
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-      sendControlEvent("pause", "manual_pause");
+    // Stop audio if it's running
+    if (is_audio) {
+      await stopAudio(true);
     }
     
-    // Show pause banner
-    if (sessionPauseBanner) {
-      sessionPauseBanner.classList.remove("hidden");
-    }
-    
-    // Update button visibility
-    if (pauseSessionButton) pauseSessionButton.style.display = "none";
-    if (resumeSessionButton) resumeSessionButton.style.display = "";
-    
-    // Pause timer
-    hudTimerRunning = false;
-    
-    addSystemMessage("Session paused");
-  } catch (e) {
-    console.warn("Failed to pause session:", e);
+    // Call the existing stopHudSession function
+    await stopHudSession();
+  } catch (error) {
+    console.error("Failed to stop session:", error);
+    addSystemMessage(`❌ Error stopping session: ${error.message}`);
   }
 }
 
-async function resumeHudSession() {
-  try {
-    // Send resume event to backend
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-      sendControlEvent("resume");
-    }
-    
-    // Hide pause banner
-    if (sessionPauseBanner) {
-      sessionPauseBanner.classList.add("hidden");
-    }
-    
-    // Update button visibility
-    if (pauseSessionButton) pauseSessionButton.style.display = "";
-    if (resumeSessionButton) resumeSessionButton.style.display = "none";
-    
-    // Resume timer
-    hudTimerRunning = true;
-    
-    addSystemMessage("Session resumed");
-  } catch (e) {
-    console.warn("Failed to resume session:", e);
+// Pause session functionality
+async function pauseSession() {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN || sessionPaused) return;
+  
+  sessionPaused = true;
+  pauseStartTime = Date.now();
+  
+  // Stop audio streaming temporarily
+  if (micStream) {
+    micStream.getTracks().forEach(track => track.enabled = false);
   }
+  
+  // Send pause event to backend
+  websocket.send(JSON.stringify({
+    type: "pause_session",
+    session_id: sessionId,
+    timestamp: new Date().toISOString()
+  }));
+  
+  // Update UI
+  if (pauseBtn) pauseBtn.style.display = "none";
+  if (resumeBtn) resumeBtn.style.display = "inline-block";
+  addSystemMessage("⏸ Session paused");
+}
+
+// Resume session functionality
+async function resumeSession() {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN || !sessionPaused) return;
+  
+  // Calculate pause duration
+  const pauseDuration = (Date.now() - pauseStartTime) / 1000;
+  totalPauseTime += pauseDuration;
+  
+  sessionPaused = false;
+  
+  // Resume audio streaming
+  if (micStream) {
+    micStream.getTracks().forEach(track => track.enabled = true);
+  }
+  
+  // Send resume event to backend with pause duration
+  websocket.send(JSON.stringify({
+    type: "resume_session",
+    session_id: sessionId,
+    pause_duration_seconds: pauseDuration,
+    timestamp: new Date().toISOString()
+  }));
+  
+  // Update UI
+  if (pauseBtn) pauseBtn.style.display = "inline-block";
+  if (resumeBtn) resumeBtn.style.display = "none";
+  addSystemMessage("▶ Session resumed");
+>>>>>>> origin
 }
 
 // Helper function to clean spaces between CJK characters
@@ -462,15 +490,15 @@ if (clearConsoleBtn) {
   clearConsoleBtn.addEventListener('click', clearConsole);
 }
 
-if (startSessionButton) {
-  startSessionButton.addEventListener("click", () => {
-    void startHudSession();
+if (startSessionBtn) {
+  startSessionBtn.addEventListener("click", () => {
+    void startSession();
   });
 }
 
-if (stopSessionButton) {
-  stopSessionButton.addEventListener("click", () => {
-    void stopHudSession();
+if (stopSessionBtn) {
+  stopSessionBtn.addEventListener("click", () => {
+    void stopSession();
   });
 }
 
@@ -516,6 +544,19 @@ if (resetTimerButton) {
   });
 }
 
+// Add event listeners for pause/resume buttons
+if (pauseBtn) {
+  pauseBtn.addEventListener("click", () => {
+    void pauseSession();
+  });
+}
+
+if (resumeBtn) {
+  resumeBtn.addEventListener("click", () => {
+    void resumeSession();
+  });
+}
+
 // Update connection status UI
 function updateConnectionStatus(connected) {
   if (connected) {
@@ -526,8 +567,8 @@ function updateConnectionStatus(connected) {
     statusText.textContent = "Disconnected";
   }
 
-  if (startSessionButton && startSessionButton.style.display !== "none") {
-    startSessionButton.disabled = !connected;
+  if (startSessionBtn && startSessionBtn.style.display !== "none") {
+    startSessionBtn.disabled = !connected;
   }
 }
 
@@ -658,8 +699,8 @@ function connectWebsocket() {
     addSystemMessage("Connected to ADK streaming server");
 
     setHudSessionStatus(false);
-    if (startSessionButton && startSessionButton.style.display !== "none") {
-      startSessionButton.disabled = false;
+    if (startSessionBtn && startSessionBtn.style.display !== "none") {
+      startSessionBtn.disabled = false;
     }
 
     // Log to console
@@ -696,6 +737,20 @@ function connectWebsocket() {
         }
       } else if (status === "ended") {
         setSessionPausedUI(false);
+        // Session ended - redirect to summary page
+        console.log("Session ended, redirecting to summary");
+        addSystemMessage("🏁 Session completed! Redirecting to summary...");
+        
+        // Redirect to post-session summary screen
+        setTimeout(() => {
+          try {
+            window.location.href = `/summary?session_id=${encodeURIComponent(sessionId)}`;
+          } catch (e) {
+            console.error("Failed to redirect to summary:", e);
+            // Fall through to local UI reset if navigation fails
+            stopHudSession();
+          }
+        }, 2000); // 2 second delay to show message
       }
       addConsoleEntry("incoming", `Session state: ${status}`, adkEvent, "⏯️", "system");
       return;
@@ -1092,34 +1147,40 @@ function connectWebsocket() {
   };
 
   // Handle connection close
-  websocket.onclose = function () {
-    console.log("WebSocket connection closed.");
+  websocket.onclose = function (event) {
+    console.log("WebSocket closed:", event.code, event.reason);
     updateConnectionStatus(false);
     setSessionPausedUI(false);
     document.getElementById("sendButton").disabled = true;
     if (is_audio || isAudioStarting) {
       void stopAudio(true);
     }
-    addSystemMessage("Connection closed. Reconnecting in 5 seconds...");
-
-    // Log to console
-    addConsoleEntry('error', 'WebSocket Disconnected', {
-      status: 'Connection closed',
-      reconnecting: true,
-      reconnectDelay: '5 seconds'
-    }, '🔌', 'system');
-
-    setTimeout(function () {
-      console.log("Reconnecting...");
-
-      // Log reconnection attempt to console
-      addConsoleEntry('outgoing', 'Reconnecting to ADK server...', {
-        userId: userId,
-        sessionId: sessionId
-      }, '🔄', 'system');
-
-      connectWebsocket();
-    }, 5000);
+    
+    // Check if this was a service unavailable error
+    if (event.reason && event.reason.includes("service is currently unavailable")) {
+      addSystemMessage("🔴 Google AI service is currently unavailable. Please try again later.");
+      addSystemMessage("💡 This is a Google API issue, not a problem with your setup.");
+      return; // Don't try to reconnect if service is down
+    }
+    
+    // Check if this was an active session that ended unexpectedly
+    if (event.code !== 1000 && sessionId && is_audio) {
+      console.log("Active session ended unexpectedly, checking for summary...");
+      addSystemMessage("🔌 Connection lost. Checking for session summary...");
+      
+      // Wait a moment for summary to be created, then redirect
+      setTimeout(() => {
+        try {
+          window.location.href = `/summary?session_id=${encodeURIComponent(sessionId)}`;
+        } catch (e) {
+          console.error("Failed to redirect to summary:", e);
+          addSystemMessage("❌ Session ended. Summary may not be available.");
+        }
+      }, 3000);
+    } else {
+      addSystemMessage("Connection closed. Reconnecting in 5 seconds...");
+      void connectWebSocket();
+    }
   };
 
   websocket.onerror = function (e) {
@@ -1524,9 +1585,6 @@ function toggleVideoStream() {
 }
 
 function sendPeriodicCoachPrompt() {
-  if (isSessionPaused || !isVideoStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {
-    return;
-  }
   websocket.send(JSON.stringify({
     type: "text",
     text: "Video stream is active. Give one short form correction if needed."
@@ -1603,6 +1661,7 @@ let audioPlayerContext;
 let audioRecorderNode;
 let audioRecorderContext;
 let micStream;
+let mediaStream;
 let isAudioStarting = false;
 
 // Import the audio worklets
@@ -1621,7 +1680,8 @@ function startAudio() {
     ([node, ctx, stream]) => {
       audioRecorderNode = node;
       audioRecorderContext = ctx;
-      micStream = stream;
+      micStream = stream; // This should set the global micStream
+      console.log("Audio input started, micStream tracks:", micStream?.getTracks().length);
     }
   );
   return Promise.all([outputPromise, inputPromise]);
@@ -1694,6 +1754,14 @@ async function stopAudio(silent = false) {
 
 // Audio recorder handler
 function audioRecorderHandler(pcmData) {
+  // Log occasionally to see if audio is being processed
+  if (!audioRecorderHandler.logCounter) audioRecorderHandler.logCounter = 0;
+  audioRecorderHandler.logCounter++;
+  
+  if (audioRecorderHandler.logCounter % 100 === 0) {
+    console.log("Audio data received, bytes:", pcmData.byteLength, "is_audio:", is_audio, "session_paused:", isSessionPaused);
+  }
+  
   if (websocket && websocket.readyState === WebSocket.OPEN && is_audio && !isSessionPaused) {
     // Send audio as binary WebSocket frame (more efficient than base64 JSON)
     websocket.send(pcmData);

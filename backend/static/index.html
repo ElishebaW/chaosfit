@@ -63,6 +63,64 @@
       </div>
     </div>
 
+    <!-- Session Setup Panel -->
+    <div class="session-setup-panel" id="sessionSetupPanel">
+      <div class="setup-header">
+        <h3>WORKOUT SETUP</h3>
+      </div>
+      <div class="setup-controls">
+        <div class="setup-group">
+          <label for="durationSelect">Duration:</label>
+          <select id="durationSelect" class="setup-select">
+            <option value="5" selected>5 min</option>
+            <option value="12">12 min</option>
+            <option value="15">15 min</option>
+            <option value="20">20 min</option>
+            <option value="30">30 min</option>
+          </select>
+        </div>
+        
+        <div class="setup-group">
+          <label for="levelSelect">Fitness Level:</label>
+          <select id="levelSelect" class="setup-select">
+            <option value="beginner" selected>Beginner</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="advanced">Advanced</option>
+          </select>
+        </div>
+        
+        <div class="setup-group">
+          <label for="impactSelect">Impact:</label>
+          <select id="impactSelect" class="setup-select">
+            <option value="true" selected>Low Impact</option>
+            <option value="false">High Impact</option>
+          </select>
+        </div>
+        
+        <div class="setup-group">
+          <label>Equipment:</label>
+          <div class="equipment-checkboxes">
+            <label class="equipment-label">
+              <input type="checkbox" id="dumbbells" value="dumbbells">
+              <span>Dumbbells</span>
+            </label>
+            <label class="equipment-label">
+              <input type="checkbox" id="resistance_bands" value="resistance_bands">
+              <span>Resistance Bands</span>
+            </label>
+            <label class="equipment-label">
+              <input type="checkbox" id="mat" value="mat">
+              <span>Exercise Mat</span>
+            </label>
+            <label class="equipment-label">
+              <input type="checkbox" id="chair" value="chair">
+              <span>Chair</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Session Controls - Above coaching log -->
     <div class="session-controls">
       <button id="startSession" class="control-btn session-btn" disabled>START SESSION</button>

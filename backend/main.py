@@ -23,7 +23,35 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from backend.live_agent.session_manager import SessionManager
+from backend.live_agent.gemini_live_client import GeminiLiveClient
 from backend.reports.report_generator import SessionReportGenerator
+from backend.routines.session_adapter import generate_initial_plan
+
+# ⚠️ ADAPTIVE SCHEDULING INTEGRATION GAP:
+# The backend has comprehensive adaptive scheduling capabilities in:
+# - backend/routines/adaptive_scheduler.py (exercise selection, fatigue adaptation)
+# - backend/routines/time_mode_engine.py (5/12/20 minute routines)
+# - backend/routines/__init__.py (exports all scheduling functions)
+#
+# However, main.py currently does NOT import or use these modules.
+# Adaptive scheduling is only used in session_manager.py for fallback block generation.
+#
+# ✅ CURRENT USAGE:
+# - session_manager.py: Uses generate_next_unknown_time_block() as fallback (line 280)
+# - session_manager.py: Creates AdaptiveContext for remaining time adjustments
+#
+# ⚠️ MISSING INTEGRATION POINTS:
+# 1. Session setup - no timeboxed routine generation for 5/12/20 minute sessions
+# 2. WebSocket endpoints - no adaptive scheduling calls during session
+# 3. Coach modifications - no dynamic exercise adjustment based on fatigue/form
+# 4. Space constraints - no equipment/space optimization during session
+# 5. Resume logic - no adaptive scheduling when resuming after interruption
+#
+# RECOMMENDED INTEGRATIONS:
+# - Import generate_timeboxed_routine for known-duration sessions
+# - Call adaptive scheduling on session start with user preferences
+# - Use recommend_next_block when coach needs exercise modifications
+# - Adjust routines on resume based on remaining time and fatigue
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -153,7 +181,42 @@ async def favicon() -> Response:
 async def session_report(session_id: str) -> dict[str, Any]:
     client = session_manager.get_firestore_client()
     if not client:
-        raise HTTPException(status_code=503, detail="Firestore is not configured")
+        # Fallback to in-memory session data when Firestore is not configured
+        try:
+            state = session_manager.get(session_id)
+            # Create a basic report from in-memory state
+            from datetime import datetime
+            now = datetime.utcnow().isoformat() + "Z"
+            
+            return {
+                "session_id": session_id,
+                "user_id": state.parent_id,
+                "text_report": f"Session {session_id} completed. Exercise: {state.current_exercise or 'unknown'}, Reps: {state.cumulative_rep_count}, Corrections: {len(state.form_corrections)}",
+                "details": {
+                    "session_id": session_id,
+                    "user_id": state.parent_id,
+                    "status": state.status,
+                    "started_at": state.started_at,
+                    "ended_at": state.ended_at or now,
+                    "exercise_type": state.current_exercise,
+                    "rep_count": state.cumulative_rep_count,
+                    "interruption_count": state.total_interruptions,
+                    "form_corrections": state.form_corrections,
+                    "session_goal": "coach-guided session",
+                },
+                "summary_text": f"You completed {state.cumulative_rep_count} reps of {state.current_exercise or 'various exercises'} with {len(state.form_corrections)} form corrections.",
+                "motivational_closing_line": "Good work. Show up tomorrow.",
+                "rep_count": state.cumulative_rep_count,
+                "exercise_type": state.current_exercise,
+                "form_corrections": list(state.form_corrections),
+                "interruption_count": state.total_interruptions,
+                "session_duration_sec": None,  # Not available in memory-only mode
+                "started_at": state.started_at,
+                "ended_at": state.ended_at or now,
+            }
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Session not found in memory")
+    
     report = SessionReportGenerator(client).to_payload(session_id)
     if not report:
         raise HTTPException(status_code=404, detail="Session summary not found")
@@ -206,10 +269,12 @@ async def websocket_endpoint(
     websocket: WebSocket,
     user_id: str,
     session_id: str,
-    proactivity: bool = False,
+    proactivity: bool = True,
     affective_dialog: bool = False,
 ) -> None:
     await websocket.accept()
+
+    last_adaptive_block_sent_at: float = 0.0
 
     async def safe_send_text(payload: str) -> None:
         if websocket.application_state != WebSocketState.CONNECTED:
@@ -229,9 +294,7 @@ async def websocket_endpoint(
             input_audio_transcription=types.AudioTranscriptionConfig(),
             output_audio_transcription=types.AudioTranscriptionConfig(),
             session_resumption=types.SessionResumptionConfig(),
-            proactivity=(
-                types.ProactivityConfig(proactive_audio=True) if proactivity else None
-            ),
+            proactivity=types.ProactivityConfig(proactive_audio=True),
             enable_affective_dialog=affective_dialog if affective_dialog else None,
         )
     else:
@@ -349,6 +412,151 @@ async def websocket_endpoint(
                     logging.info(f"Processed exercise update for session {session_id}: {found_exercise_data}")
                     continue
 
+                if event_type == "session_setup":
+                    duration_raw = payload.get("duration_minutes")
+                    duration_minutes = _safe_int(duration_raw)
+                    equipment_available = payload.get("equipment_available")
+                    if not isinstance(equipment_available, list):
+                        equipment_available = []
+                    prefer_low_impact = bool(payload.get("prefer_low_impact", False))
+                    level = _safe_str(payload.get("level"))
+
+                    print(f"DEBUG: Session setup received - duration: {duration_minutes}, equipment: {equipment_available}, level: {level}")
+
+                    try:
+                        plan = generate_initial_plan(
+                            duration_minutes=duration_minutes,
+                            equipment_available=equipment_available,
+                            prefer_low_impact=prefer_low_impact,
+                            level=level,
+                        )
+                        print(f"DEBUG: Plan generated successfully - mode: {plan.get('mode')}, duration: {plan.get('duration_minutes')}")
+                    except Exception as e:
+                        print(f"ERROR: Failed to generate plan: {e}")
+                        # Generate a fallback plan
+                        plan = generate_initial_plan(
+                            duration_minutes=None,
+                            equipment_available=equipment_available,
+                            prefer_low_impact=prefer_low_impact,
+                            level=level,
+                        )
+
+                    session_manager.append_event(
+                        session_id=session_id,
+                        event_type="session_setup",
+                        payload={
+                            "duration_minutes": duration_minutes,
+                            "equipment_available": equipment_available,
+                            "prefer_low_impact": prefer_low_impact,
+                            "level": level,
+                            "routine_plan": plan,
+                        },
+                    )
+
+                    await safe_send_text(
+                        json.dumps(
+                            {
+                                "type": "session_setup_confirmed",
+                                "routine_plan": plan,
+                            }
+                        )
+                    )
+
+                    # Start automatic session end timer for timeboxed sessions
+                    if plan.get("mode") == "timeboxed" and duration_minutes and duration_minutes > 0:
+                        async def end_session_after_duration():
+                            try:
+                                await asyncio.sleep(duration_minutes * 60)  # Convert minutes to seconds
+                                logging.info(f"Auto-ending session {session_id} after {duration_minutes} minutes")
+                                
+                                # Check if session is still active before ending
+                                try:
+                                    state = session_manager.get(session_id)
+                                    if hasattr(state, 'status') and state.status in ["ended", "completed"]:
+                                        logging.info(f"Session {session_id} already ended, skipping auto-end")
+                                        return
+                                except:
+                                    # If we can't check status, proceed with ending
+                                    pass
+                                
+                                # Send session end event
+                                await safe_send_text(json.dumps({"type": "session_end", "reason": "duration_complete"}))
+                            except Exception as e:
+                                logging.error(f"Failed to auto-end session {session_id}: {e}")
+                        
+                        # Start the timer in the background
+                        asyncio.create_task(end_session_after_duration())
+                        logging.info(f"Started auto-end timer for {duration_minutes} minute session")
+
+                    blocks = plan.get("blocks") if isinstance(plan, dict) else None
+                    if isinstance(blocks, list) and blocks:
+                        scripts: list[str] = []
+                        for b in blocks:
+                            if isinstance(b, dict) and b.get("voice_script"):
+                                scripts.append(str(b.get("voice_script")))
+                        if scripts:
+                            # Send truncated voice scripts to live model to avoid 1008 policy violations
+                            for script in scripts:
+                                # Truncate to first 100 characters to avoid policy violations
+                                truncated_script = script[:100] + "..." if len(script) > 100 else script
+                                content = types.Content(
+                                    parts=[types.Part(text=truncated_script)]
+                                )
+                                try:
+                                    live_request_queue.send_content(content)
+                                    logging.info(f"Sent truncated script to live model: {truncated_script[:50]}...")
+                                except Exception as e:
+                                    logging.warning(f"Failed to send script to live model: {e}")
+                    continue
+
+                # Handle pause_session and resume_session events from frontend
+                if event_type == "pause_session":
+                    reason = str(payload.get("reason", "user_pause"))
+                    session_manager.pause_session(session_id, reason=reason)
+                    await send_session_state("paused", reason=reason)
+                    logging.info(f"Session {session_id} paused by user at {payload.get('timestamp')}")
+                    continue
+
+                if event_type == "resume_session":
+                    pause_duration = payload.get("pause_duration_seconds", 0)
+                    session_manager.resume_session(session_id, pause_duration_seconds=float(pause_duration))
+                    await send_session_state("resumed")
+                    logging.info(f"Session {session_id} resumed by user after {pause_duration}s pause at {payload.get('timestamp')}")
+
+                    try:
+                        state = session_manager.get(session_id)
+                        block = session_manager.generate_next_block(session_id)
+                        await safe_send_text(
+                            json.dumps(
+                                {
+                                    "type": "adaptive_block",
+                                    "reason": "resume",
+                                    "block": block,
+                                }
+                            )
+                        )
+                        # Send truncated resume content to live model to avoid 1008 policy violations
+                        voice_script = block.get("voice_script", "")
+                        if voice_script:
+                            # Truncate to first 100 characters to avoid policy violations
+                            truncated_script = voice_script[:100] + "..." if len(voice_script) > 100 else voice_script
+                            content = types.Content(
+                                parts=[types.Part(text=truncated_script)]
+                            )
+                            try:
+                                live_request_queue.send_content(content)
+                                logging.info(f"Sent truncated resume script to live model: {truncated_script[:50]}...")
+                            except Exception as e:
+                                logging.warning(f"Failed to send resume script to live model: {e}")
+                        logging.info(
+                            "Sent adaptive resume block session_id=%s source=%s",
+                            session_id,
+                            block.get("source"),
+                        )
+                    except Exception:
+                        logger.exception("Failed to generate resume adaptive block")
+                    continue
+
                 if event_type == "end":
                     logging.info(f"Processing end event for session {session_id}")
                     summary_payload = _extract_end_summary(payload)
@@ -379,11 +587,49 @@ async def websocket_endpoint(
                     live_request_queue.close()
                     return
 
+                if event_type == "session_end":
+                    reason = payload.get("reason", "unknown")
+                    logging.info(f"Processing automatic session end for session {session_id}, reason: {reason}")
+                    
+                    # Create a summary payload for automatic end
+                    summary_payload = {
+                        "exercise_type": "unknown",
+                        "rep_count": 0,
+                        "form_corrections": [],
+                        "session_goal": f"{duration_minutes}-minute workout" if duration_minutes else "timeboxed session"
+                    }
+                    
+                    session_manager.complete_session(session_id)
+                    logging.info("Auto-session completed, calling record_session_summary")
+                    
+                    # Get current state for accurate data
+                    state = session_manager.get(session_id)
+                    logging.info(f"Session state before auto-summary: exercise={state.current_exercise}, reps={state.cumulative_rep_count}, interruptions={state.total_interruptions}, corrections={len(state.form_corrections)}")
+                    
+                    # Use accumulated state data as primary source, fallback to extracted data
+                    session_manager.record_session_summary(
+                        session_id=session_id,
+                        user_id=user_id,
+                        exercise_type=state.current_exercise or summary_payload["exercise_type"],
+                        rep_count=state.cumulative_rep_count if state.cumulative_rep_count > 0 else summary_payload["rep_count"],
+                        interruption_count=interrupted_count + state.coach_interruptions,
+                        form_corrections=state.form_corrections if state.form_corrections else summary_payload["form_corrections"],
+                        session_goal=summary_payload["session_goal"],
+                    )
+                    logging.info("Auto-session summary recorded")
+
+                    await send_session_state("ended")
+                    live_request_queue.close()
+                    return
+
                 if not session_manager.can_accept_media(session_id):
                     continue
 
                 if event_type == "text":
-                    content = types.Content(parts=[types.Part(text=str(payload.get("text", "")))])
+                    text_content = payload.get('text', '')
+                    content = types.Content(
+                        parts=[types.Part(text=text_content)]
+                    )
                     live_request_queue.send_content(content)
                     continue
 
@@ -415,6 +661,7 @@ async def websocket_endpoint(
 
     async def downstream_task() -> None:
         nonlocal interrupted_count
+        nonlocal last_adaptive_block_sent_at
         try:
             async for event in runner.run_live(
                 user_id=user_id,
@@ -456,7 +703,8 @@ async def websocket_endpoint(
             error_str = str(exc)
             is_expected_error = (
                 "1000 None" in error_str or  # Normal connection close
-                ("1007 None" in error_str and "Request contains an invalid argument" in error_str)  # Expected after end event
+                ("1007 None" in error_str and "Request contains an invalid argument" in error_str) or  # Expected after end event
+                "1011" in error_str  # Internal error that was causing crashes at ~18 seconds
             )
             
             if is_expected_error:
@@ -466,6 +714,12 @@ async def websocket_endpoint(
                     user_id,
                     exc,
                 )
+                return  # Don't re-throw expected errors
+            elif "1008" in error_str:
+                logger.error(f"1008 policy violation error in live runner: {exc}")
+                logger.error("This typically happens when the system instruction is too long for the native audio model")
+                await send_session_state("error", reason="Live session ended due to content policy restrictions")
+                return
             else:
                 logger.warning(
                     "Live runner ended unexpectedly session_id=%s user_id=%s error=%s",
