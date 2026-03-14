@@ -72,10 +72,8 @@ Here's exactly how to use ChaosFit from setup to results:
    Open `http://localhost:8000` in your browser
 
 2. **Begin Your Workout**
-   - Click "Start Audio" to enable microphone
-   - Click "Start Session" to begin camera streaming
-   - Say: *"What's a good workout for today?"*
-   - AI coach will respond with personalized exercise suggestions
+   - Click **Start Session** to begin camera and microphone streaming
+   - Tell the coach what workout you want to do today, or wait — the coach will prompt you
 
 3. **Follow AI Guidance**
    - Perform exercises as instructed by the coach
@@ -86,7 +84,6 @@ Here's exactly how to use ChaosFit from setup to results:
 4. **Handle Interruptions**
    - Click "Pause Session" if baby cries or you need a break
    - Click "Resume Session" when ready to continue
-   - Coach automatically adjusts workout based on remaining time
 
 ### WebSocket Message Contract (UI Integration)
 
@@ -148,34 +145,6 @@ After `session_setup`, the server responds with the generated routine plan.
 
 The backend also injects the routine plan into the coach context so the coach can follow it.
 
-#### Server → Client: `adaptive_block`
-
-During a session, the backend may push an updated recommended next block (for example after interruptions, form corrections, fatigue signals, time pressure, or when resuming).
-
-```json
-{
-  "type": "adaptive_block",
-  "reason": "resume",
-  "block": {
-    "name": "Adaptive Block",
-    "mode": "main",
-    "duration_sec": 120,
-    "items": [{"exercise_id": "...", "prescription": {"type": "..."}}],
-    "voice_script": "...",
-    "source": "vertex_ai"
-  }
-}
-```
-
-`reason` can be one of:
-- `resume`
-- `interruption`
-- `form_correction`
-- `fatigue`
-- `low_form`
-- `time_pressure`
-- `auto`
-
 5. **End Session & Get Summary**
    - Click "End Session" when workout is complete
    - System automatically generates detailed summary including:
@@ -185,13 +154,23 @@ During a session, the backend may push an updated recommended next block (for ex
      - Performance insights and recommendations
 
 **Example Session Summary Output:**
-```
-Workout Complete! 
-- 12 minutes of bodyweight exercises
-- 45 total reps across 4 exercises
-- 3 form corrections (squat depth, push-up form)
-- 2 interruptions (baby cry, water break)
-- Great consistency! Try adding 5 more reps next time.
+```json
+{
+  "session_id": "demo-session-abc123",
+  "user_id": "demo-user",
+  "exercise_type": "air_squat",
+  "rep_count": 15,
+  "interruption_count": 2,
+  "form_corrections": [
+    "Keep your chest up — you're rounding forward at the bottom.",
+    "Drive your knees out, they're caving in on the way up."
+  ],
+  "session_duration_sec": 312,
+  "started_at": "2026-03-14T11:22:56+00:00",
+  "ended_at": "2026-03-14T11:28:08+00:00",
+  "summary_text": "Strong effort on the air squats. Focus on chest position and knee tracking next session.",
+  "motivational_closing_line": "Good work. Show up tomorrow."
+}
 ```
 
 ## Technologies Used
@@ -241,32 +220,18 @@ Workout Complete!
    ```
 
 2. **Set up environment**
-   ```bash
-   # Copy environment template
+```bash
    cp .env.example .env
-   
-   # Edit .env with your API credentials
-   # Choose Option A or B below:
-   ```
+```
 
-3. **Configure API Access**
-
-   **Option A: Gemini Live API (AI Studio)**
-   ```env
+3. **Add your API key** — edit `.env`:
+```env
    GOOGLE_GENAI_USE_VERTEXAI=FALSE
    GOOGLE_API_KEY=<your-gemini-api-key>
    DEMO_AGENT_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
    ENABLE_FIRESTORE=true
    GOOGLE_CLOUD_PROJECT=chaos-fit
-   ```
-
-   **Option B: Vertex AI Live API**
-   ```env
-   GOOGLE_GENAI_USE_VERTEXAI=TRUE
-   GOOGLE_CLOUD_PROJECT=your_project_id
-   GOOGLE_CLOUD_LOCATION=us-central1
-   DEMO_AGENT_MODEL=gemini-live-2.5-flash-native-audio
-   ```
+```
 
 4. **Install dependencies**
    
@@ -395,6 +360,9 @@ uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 - **Implemented client-side processing** for visual feedback to reduce server load
 
 ### What We'd Build With More Time
+- **Improved Pause/Resume Workflow** — Smoother UX for pausing and resuming, including better state recovery and clearer user feedback during paused state.
+- **Better Session Setup Experience** — A guided pre-session flow where the user sets their goal, exercise type, and duration before streaming begins.
+- **Adaptive Scheduling Engine** — Dynamically restructure workout blocks mid-session based on remaining time, fatigue signals, and interruptions.
 - **Advanced pose estimation** for more precise form analysis
 - **Progressive workout programs** spanning multiple sessions
 - **Social features** for parent community support
