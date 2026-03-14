@@ -47,6 +47,93 @@ ChaosFit uses Gemini Live API's multimodal capabilities to create an interactive
 3. **Real-time processing** allows the coach to interrupt and provide immediate corrections
 4. **Adaptive routines engine** generates workouts based on available time and constraints
 
+## Quick Start Guide
+
+### Spin-Up Instructions
+
+#### Prerequisites
+- **Python 3.11+** (tested with Python 3.11)
+- **uv package manager** (recommended) or pip/venv
+- **Google Cloud Project** (for Vertex AI) or Google AI Studio API key
+- **Modern browser** with camera/microphone support (Chrome/Edge recommended)
+- **6GB+ RAM** and **2+ CPU cores** for optimal performance
+
+#### Installation Steps
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-org/chaosfit.git
+   cd chaosfit
+   ```
+
+2. **Set up environment**
+```bash
+   cp .env.example .env
+```
+
+3. **Add your API key** — edit `.env`:
+```env
+   GOOGLE_GENAI_USE_VERTEXAI=FALSE
+   GOOGLE_API_KEY=<your-gemini-api-key>
+   DEMO_AGENT_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+   ENABLE_FIRESTORE=true
+   GOOGLE_CLOUD_PROJECT=chaos-fit
+```
+
+4. **Install dependencies**
+   
+   Using uv (recommended):
+   ```bash
+   uv sync
+   ```
+   
+   Using pip/venv:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install -r backend/requirements.txt
+   ```
+
+#### How to Run Locally
+
+1. **Start the backend server**
+   ```bash
+   uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+2. **Open the application**
+   - Navigate to: `http://localhost:8000`
+   - Allow camera and microphone permissions when prompted
+
+3. **Verify installation**
+   - Health check: `http://localhost:8000/healthz`
+   - Should return `{"status": "healthy"}`
+
+#### Expected Output & Verification
+
+1. **Successful startup** shows:
+   ```
+   INFO:     Uvicorn running on http://0.0.0.0:8000
+   INFO:     Started reloader process
+   INFO:     Started server process
+   ```
+
+2. **Browser interface** displays:
+   - ChaosFit logo and session controls
+   - "Start Audio" and "Start Session" buttons
+   - Webcam preview area and transcript console
+
+3. **Test basic functionality**:
+   - Click "Start Audio" - microphone should activate
+   - Click "Start Session" - camera preview appears
+   - Say "Show me a quick workout" - AI coach should respond
+   - Check browser console for WebSocket connection logs
+
+4. **Verify WebSocket connection**:
+   - Open browser developer tools
+   - Check Network tab for WebSocket connection to `/ws/{user_id}/{session_id}`
+   - Should see "Connected" status and live message exchange
+
 ### User Flow: From Start to Summary
 
 Here's exactly how to use ChaosFit from setup to results:
@@ -185,93 +272,6 @@ The backend also injects the routine plan into the coach context so the coach ca
 - **Custom exercise detection** - Pattern matching for workout identification
 - **Form analysis algorithms** - Computer vision for posture assessment
 - **Adaptive scheduling engine** - Dynamic workout optimization
-
-## Quick Start Guide
-
-### Spin-Up Instructions
-
-#### Prerequisites
-- **Python 3.11+** (tested with Python 3.11)
-- **uv package manager** (recommended) or pip/venv
-- **Google Cloud Project** (for Vertex AI) or Google AI Studio API key
-- **Modern browser** with camera/microphone support (Chrome/Edge recommended)
-- **6GB+ RAM** and **2+ CPU cores** for optimal performance
-
-#### Installation Steps
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-org/chaosfit.git
-   cd chaosfit
-   ```
-
-2. **Set up environment**
-```bash
-   cp .env.example .env
-```
-
-3. **Add your API key** — edit `.env`:
-```env
-   GOOGLE_GENAI_USE_VERTEXAI=FALSE
-   GOOGLE_API_KEY=<your-gemini-api-key>
-   DEMO_AGENT_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
-   ENABLE_FIRESTORE=true
-   GOOGLE_CLOUD_PROJECT=chaos-fit
-```
-
-4. **Install dependencies**
-   
-   Using uv (recommended):
-   ```bash
-   uv sync
-   ```
-   
-   Using pip/venv:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -r backend/requirements.txt
-   ```
-
-#### How to Run Locally
-
-1. **Start the backend server**
-   ```bash
-   uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-
-2. **Open the application**
-   - Navigate to: `http://localhost:8000`
-   - Allow camera and microphone permissions when prompted
-
-3. **Verify installation**
-   - Health check: `http://localhost:8000/healthz`
-   - Should return `{"status": "healthy"}`
-
-#### Expected Output & Verification
-
-1. **Successful startup** shows:
-   ```
-   INFO:     Uvicorn running on http://0.0.0.0:8000
-   INFO:     Started reloader process
-   INFO:     Started server process
-   ```
-
-2. **Browser interface** displays:
-   - ChaosFit logo and session controls
-   - "Start Audio" and "Start Session" buttons
-   - Webcam preview area and transcript console
-
-3. **Test basic functionality**:
-   - Click "Start Audio" - microphone should activate
-   - Click "Start Session" - camera preview appears
-   - Say "Show me a quick workout" - AI coach should respond
-   - Check browser console for WebSocket connection logs
-
-4. **Verify WebSocket connection**:
-   - Open browser developer tools
-   - Check Network tab for WebSocket connection to `/ws/{user_id}/{session_id}`
-   - Should see "Connected" status and live message exchange
 
 ### Troubleshooting Common Issues
 
