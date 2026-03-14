@@ -104,41 +104,12 @@ class SessionManager:
         
         logging.debug(f"Processing event {event_type} for session {session_id}: {payload}")
         
-        # Track exercise data
-        if "exercise_id" in payload and isinstance(payload["exercise_id"], str):
-            exercise_id = payload["exercise_id"]
-            state.exercise_history.append(exercise_id)
-            state.current_exercise = exercise_id
-            logging.info(f"Updated exercise to {exercise_id} for session {session_id}")
-            
-        if "rep_count" in payload:
-            rep_count = _as_int(payload.get("rep_count"))
-            if rep_count is not None:
-                state.rep_count += rep_count
-                state.cumulative_rep_count += rep_count
-                logging.info(f"Added {rep_count} reps to session {session_id} (total: {state.cumulative_rep_count})")
-            
-        if "form_corrections" in payload:
-            corrections = payload.get("form_corrections")
-            if isinstance(corrections, list):
-                new_corrections = []
-                for correction in corrections:
-                    correction_str = str(correction).strip()
-                    if correction_str and correction_str not in state.form_corrections:
-                        state.form_corrections.append(correction_str)
-                        new_corrections.append(correction_str)
-                if new_corrections:
-                    logging.info(f"Added {len(new_corrections)} form corrections to session {session_id}")
-                        
-        if "exercise_type" in payload and isinstance(payload["exercise_type"], str):
-            state.current_exercise = payload["exercise_type"]
-            logging.info(f"Updated exercise type to {payload['exercise_type']} for session {session_id}")
-            
-        # Track interruptions
-        if payload.get("interruption") is True:
-            state.total_interruptions += 1
-            state.coach_interruptions += 1
-            logging.info(f"Coach interruption detected for session {session_id} (total: {state.total_interruptions}, coach: {state.coach_interruptions})")
+        # Handle exercise_update events specifically
+        if event_type == "exercise_update":
+            self._process_exercise_update(state, payload)
+        else:
+            # Process other event types
+            self._process_generic_event(state, payload)
                 
         if "form_score" in payload:
             state.recent_form_score = _as_float(payload.get("form_score"))
@@ -164,6 +135,102 @@ class SessionManager:
             logging.error(f"Failed to write event to Firestore: {e}")
             # Fail-open in local/dev environments where Firestore is not enabled.
             self._firestore = None
+    
+    def _process_exercise_update(self, state: SessionState, payload: dict[str, Any]) -> None:
+        """Process exercise update events with structured data."""
+        
+        # Track exercise ID and type
+        exercise_id = payload.get("exercise_id")
+        exercise_type = payload.get("exercise_type")
+        
+        if exercise_id and isinstance(exercise_id, str):
+            # Only add to history if it's a new exercise (different from current)
+            if exercise_id != state.current_exercise:
+                state.exercise_history.append(exercise_id)
+                logging.debug(f"New exercise: {exercise_id}")
+            state.current_exercise = exercise_id
+        elif exercise_type and isinstance(exercise_type, str):
+            # Use exercise_type as fallback if no exercise_id
+            if exercise_type != state.current_exercise:
+                state.exercise_history.append(exercise_type)
+                logging.debug(f"New exercise type: {exercise_type}")
+            state.current_exercise = exercise_type
+            
+        # Track rep counts
+        rep_count = payload.get("rep_count")
+        if rep_count is not None:
+            rep_count_int = _as_int(rep_count)
+            if rep_count_int is not None and rep_count_int > 0:
+                # For exercise updates, rep_count is typically the cumulative count
+                # If it's a delta (small number), add to cumulative; if it's large, treat as new total
+                if rep_count_int <= 50:  # Assume it's a delta addition
+                    state.cumulative_rep_count += rep_count_int
+                    state.rep_count = rep_count_int  # Current set reps
+                else:  # Treat as new total
+                    state.cumulative_rep_count = rep_count_int
+                    state.rep_count = rep_count_int
+                logging.debug(f"Updated rep count: +{rep_count_int} (total: {state.cumulative_rep_count})")
+            
+        # Track form corrections
+        form_corrections = payload.get("form_corrections")
+        if isinstance(form_corrections, list):
+            new_corrections = []
+            for correction in form_corrections:
+                correction_str = str(correction).strip()
+                if correction_str and correction_str not in state.form_corrections:
+                    state.form_corrections.append(correction_str)
+                    new_corrections.append(correction_str)
+                    # Each new form correction counts as an interruption/coaching intervention
+                    state.coach_interruptions += 1
+                    state.total_interruptions += 1
+                    logging.debug(f"Form correction interruption (total: {state.total_interruptions})")
+            if new_corrections:
+                logging.debug(f"Added {len(new_corrections)} form corrections")
+                
+        # Track explicit interruptions (from tool response interruption flag)
+        if payload.get("interruption") is True:
+            state.total_interruptions += 1
+            state.coach_interruptions += 1
+            logging.debug(f"Explicit coach interruption (total: {state.total_interruptions})")
+    
+    def _process_generic_event(self, state: SessionState, payload: dict[str, Any]) -> None:
+        """Process generic events (legacy support)."""
+        
+        # Legacy exercise tracking
+        if "exercise_id" in payload and isinstance(payload["exercise_id"], str):
+            exercise_id = payload["exercise_id"]
+            state.exercise_history.append(exercise_id)
+            state.current_exercise = exercise_id
+            logging.info(f"Updated exercise to {exercise_id} for session {state.session_id}")
+            
+        if "rep_count" in payload:
+            rep_count = _as_int(payload.get("rep_count"))
+            if rep_count is not None:
+                state.rep_count += rep_count
+                state.cumulative_rep_count += rep_count
+                logging.info(f"Added {rep_count} reps to session {state.session_id} (total: {state.cumulative_rep_count})")
+            
+        if "form_corrections" in payload:
+            corrections = payload.get("form_corrections")
+            if isinstance(corrections, list):
+                new_corrections = []
+                for correction in corrections:
+                    correction_str = str(correction).strip()
+                    if correction_str and correction_str not in state.form_corrections:
+                        state.form_corrections.append(correction_str)
+                        new_corrections.append(correction_str)
+                if new_corrections:
+                    logging.info(f"Added {len(new_corrections)} form corrections to session {state.session_id}")
+                    
+        if "exercise_type" in payload and isinstance(payload["exercise_type"], str):
+            state.current_exercise = payload["exercise_type"]
+            logging.info(f"Updated exercise type to {payload['exercise_type']} for session {state.session_id}")
+            
+        # Track interruptions
+        if payload.get("interruption") is True:
+            state.total_interruptions += 1
+            state.coach_interruptions += 1
+            logging.info(f"Coach interruption detected for session {state.session_id} (total: {state.total_interruptions}, coach: {state.coach_interruptions})")
 
     def complete_session(self, session_id: str) -> None:
         state = self.get(session_id)

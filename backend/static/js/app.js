@@ -86,8 +86,8 @@ const clearConsoleBtn = document.getElementById("clearConsole");
 const showAudioEventsCheckbox = document.getElementById("showAudioEvents");
 const interruptionBanner = document.getElementById("interruptionBanner");
 const sessionPauseBanner = document.getElementById("sessionPauseBanner");
-const pauseSessionButton = document.getElementById("pauseSessionButton");
-const resumeSessionButton = document.getElementById("resumeSessionButton");
+const pauseSessionButton = document.getElementById("pauseSession");
+const resumeSessionButton = document.getElementById("resumeSession");
 let currentMessageId = null;
 let currentBubbleElement = null;
 let currentInputTranscriptionId = null;
@@ -153,12 +153,22 @@ function stopHudTimer() {
 async function startHudSession() {
   if (startSessionButton) startSessionButton.disabled = true;
   try {
+    // Start audio first (required for coaching interaction)
+    if (!is_audio && !isAudioStarting) {
+      isAudioStarting = true;
+      await startAudio();
+      is_audio = true;
+      isAudioStarting = false;
+      addSystemMessage("Audio mode enabled - you can now speak to the agent");
+    }
+    
     await startVideoStream();
     setHudSessionStatus(true);
     startHudTimer();
 
     if (stopSessionButton) stopSessionButton.style.display = "";
     if (startSessionButton) startSessionButton.style.display = "none";
+    if (pauseSessionButton) pauseSessionButton.style.display = "";
   } catch (e) {
     console.warn("Failed to start session:", e);
     if (startSessionButton) startSessionButton.disabled = false;
@@ -172,9 +182,14 @@ async function stopHudSession() {
       sendSessionEnd();
     }
     
+    // Stop audio if it's running
+    if (is_audio || isAudioStarting) {
+      await stopAudio(true);
+    }
+    
     await stopVideoStream();
   } catch (e) {
-    console.warn("Failed to stop video stream:", e);
+    console.warn("Failed to stop session:", e);
   }
 
   // Redirect to post-session summary screen.
@@ -212,6 +227,58 @@ async function stopHudSession() {
     startSessionButton.disabled = !(websocket && websocket.readyState === WebSocket.OPEN);
   }
   if (stopSessionButton) stopSessionButton.style.display = "none";
+  if (pauseSessionButton) pauseSessionButton.style.display = "none";
+  if (resumeSessionButton) resumeSessionButton.style.display = "none";
+}
+
+async function pauseHudSession() {
+  try {
+    // Send pause event to backend
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      sendControlEvent("pause", "manual_pause");
+    }
+    
+    // Show pause banner
+    if (sessionPauseBanner) {
+      sessionPauseBanner.classList.remove("hidden");
+    }
+    
+    // Update button visibility
+    if (pauseSessionButton) pauseSessionButton.style.display = "none";
+    if (resumeSessionButton) resumeSessionButton.style.display = "";
+    
+    // Pause timer
+    hudTimerRunning = false;
+    
+    addSystemMessage("Session paused");
+  } catch (e) {
+    console.warn("Failed to pause session:", e);
+  }
+}
+
+async function resumeHudSession() {
+  try {
+    // Send resume event to backend
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      sendControlEvent("resume");
+    }
+    
+    // Hide pause banner
+    if (sessionPauseBanner) {
+      sessionPauseBanner.classList.add("hidden");
+    }
+    
+    // Update button visibility
+    if (pauseSessionButton) pauseSessionButton.style.display = "";
+    if (resumeSessionButton) resumeSessionButton.style.display = "none";
+    
+    // Resume timer
+    hudTimerRunning = true;
+    
+    addSystemMessage("Session resumed");
+  } catch (e) {
+    console.warn("Failed to resume session:", e);
+  }
 }
 
 // Helper function to clean spaces between CJK characters
@@ -363,13 +430,16 @@ function setSessionPausedUI(paused, reason = null) {
       : "Session paused.";
     sessionPauseBanner.classList.remove("hidden");
     pauseSessionButton.disabled = true;
+    pauseSessionButton.style.display = "none";
     resumeSessionButton.disabled = false;
+    resumeSessionButton.style.display = "";
     messageInput.disabled = true;
     document.getElementById("sendButton").disabled = true;
   } else {
     sessionPauseBanner.classList.add("hidden");
     pauseSessionButton.disabled = false;
     resumeSessionButton.disabled = true;
+    resumeSessionButton.style.display = "none";
     messageInput.disabled = false;
     if (websocket && websocket.readyState === WebSocket.OPEN) {
       document.getElementById("sendButton").disabled = false;
@@ -613,10 +683,17 @@ function connectWebsocket() {
 
     if (adkEvent.type === "session_state") {
       const status = adkEvent.status;
+      console.log(`Session state event: ${status}, stop button visible: ${stopSessionButton?.style?.display}`);
       if (status === "paused") {
         setSessionPausedUI(true, adkEvent.reason || "manual");
       } else if (status === "resumed" || status === "active") {
         setSessionPausedUI(false);
+        // Show pause button when session is active and stop button is visible
+        if (pauseSessionButton && stopSessionButton && stopSessionButton.style.display !== "none") {
+          console.log("Showing pause button - session is active");
+          pauseSessionButton.style.display = "";
+          resumeSessionButton.style.display = "none";
+        }
       } else if (status === "ended") {
         setSessionPausedUI(false);
       }
@@ -1022,9 +1099,6 @@ function connectWebsocket() {
     document.getElementById("sendButton").disabled = true;
     if (is_audio || isAudioStarting) {
       void stopAudio(true);
-    } else {
-      startAudioButton.disabled = false;
-      startAudioButton.textContent = "Start Audio";
     }
     addSystemMessage("Connection closed. Reconnecting in 5 seconds...");
 
@@ -1605,9 +1679,6 @@ async function stopAudio(silent = false) {
   audioPlayerContext = null;
   micStream = null;
 
-  startAudioButton.disabled = false;
-  startAudioButton.textContent = "Start Audio";
-
   if (!silent) {
     addSystemMessage("Audio mode stopped");
     addConsoleEntry('outgoing', 'Audio Mode Stopped', {
@@ -1619,49 +1690,7 @@ async function stopAudio(silent = false) {
 
 // Start the audio only when the user clicked the button
 // (due to the gesture requirement for the Web Audio API)
-const startAudioButton = document.getElementById("startAudioButton");
-startAudioButton.addEventListener("click", () => {
-  if (isAudioStarting) return;
-  if (isSessionPaused) {
-    addSystemMessage("Session is paused. Resume session before starting audio.");
-    return;
-  }
-
-  if (is_audio) {
-    void stopAudio();
-    return;
-  }
-
-  isAudioStarting = true;
-  startAudioButton.disabled = true;
-  startAudioButton.textContent = "Starting...";
-  startAudio().then(() => {
-    is_audio = true;
-    isAudioStarting = false;
-    startAudioButton.disabled = false;
-    startAudioButton.textContent = "Stop Audio";
-    addSystemMessage("Audio mode enabled - you can now speak to the agent");
-
-    // Log to console
-    addConsoleEntry('outgoing', 'Audio Mode Enabled', {
-      status: 'Audio worklets started',
-      message: 'Microphone active - audio input will be sent to agent'
-    }, '🎤', 'system');
-  }).catch((error) => {
-    is_audio = false;
-    isAudioStarting = false;
-    startAudioButton.disabled = false;
-    startAudioButton.textContent = "Start Audio";
-    const message = error?.message || "Unknown audio startup error";
-    addSystemMessage(`Failed to start audio: ${message}`);
-    addConsoleEntry('error', 'Audio startup failed', {
-      error: message,
-      secureContext: window.isSecureContext,
-      host: window.location.host,
-      protocol: window.location.protocol
-    }, '⚠️', 'system');
-  });
-});
+// Note: This functionality is now integrated into the Start Session button
 
 // Audio recorder handler
 function audioRecorderHandler(pcmData) {

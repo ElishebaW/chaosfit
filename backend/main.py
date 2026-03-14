@@ -338,6 +338,16 @@ async def websocket_endpoint(
                     session_manager.resume_session(session_id)
                     await send_session_state("resumed")
                     continue
+                
+                if event_type == "exercise_update":
+                    # Process exercise update events from coach tool
+                    session_manager.append_event(
+                        session_id=session_id,
+                        event_type="exercise_update",
+                        payload=payload
+                    )
+                    logging.info(f"Processed exercise update for session {session_id}: {found_exercise_data}")
+                    continue
 
                 if event_type == "end":
                     logging.info(f"Processing end event for session {session_id}")
@@ -415,9 +425,20 @@ async def websocket_endpoint(
                 if websocket.application_state != WebSocketState.CONNECTED:
                     return
                 
+                # Debug: log event type for troubleshooting
+                event_type = type(event).__name__
+                if event_type not in ['ContentUpdateEvent', 'TurnCompleteEvent']:
+                    logger.debug(f"Received event type: {event_type}")
+                
                 # Handle coach tool responses for exercise data
                 if hasattr(event, 'tool_response') and event.tool_response is not None:
+                    logger.info(f"Coach tool response detected: {event.tool_response}")
                     await _process_coach_tool_event(event, session_id, session_manager)
+                else:
+                    # Debug: check if event has any tool-related attributes
+                    tool_attrs = {k: v for k, v in event.__dict__.items() if 'tool' in k.lower()}
+                    if tool_attrs:
+                        logger.debug(f"Event has tool attributes: {tool_attrs}")
                 
                 if bool(getattr(event, "interrupted", False)):
                     interrupted_count += 1

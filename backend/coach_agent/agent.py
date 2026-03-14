@@ -19,12 +19,10 @@ agent = Agent(
             "Coach in real time, interrupt risky form, and keep corrections short and actionable.",
         )
     )
-    + "\n\n"
-    + "IMPORTANT: When you provide exercise corrections, rep counts, or exercise instructions, "
-    "use the emit_exercise_data tool to ensure proper tracking. "
-    "CRITICAL: Always include the current session_id when calling emit_exercise_data. "
-    "The session_id is available in the conversation context or you can infer it from the WebSocket connection. "
-    "Example: emit_exercise_data(text='Do 10 squats', session_id='demo-session-123'). "
-    "This ensures all exercise data is captured for session summaries.",
+    + "\n\nCRITICAL: ALWAYS call emit_exercise_data tool with session_id for ANY coaching feedback. "
+    + "Use for: form corrections, exercise instructions, rep counts, exercise types. "
+    + "Examples: emit_exercise_data(text='Keep your chest up', session_id='demo-session-123') "
+    + "or emit_exercise_data(text='Do 10 air_squats', session_id='demo-session-123'). "
+    + "Key exercises: air_squat, push_up, plank, reverse_lunge, mountain_climber, jumping_jack.",
     tools=[emit_exercise_data_tool],
 )
