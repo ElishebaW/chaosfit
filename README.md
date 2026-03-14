@@ -47,20 +47,6 @@ ChaosFit uses Gemini Live API's multimodal capabilities to create an interactive
 3. **Real-time processing** allows the coach to interrupt and provide immediate corrections
 4. **Adaptive routines engine** generates workouts based on available time and constraints
 
-### User Interaction Flow
-1. **Session Setup**: User specifies available time (5/12/15/20/30 minutes) and constraints
-2. **Live Coaching**: User starts audio/video streaming and begins following AI guidance
-3. **Dynamic Adaptation**: Coach modifies exercises based on form, fatigue, and interruptions
-4. **Progress Tracking**: System automatically detects exercises, counts reps, and records corrections
-5. **Session Summary**: Detailed report saved with performance metrics and coaching insights
-
-### Core Capabilities in Action
-- **"I have 12 minutes during nap time"** → Generates optimized 12-minute routine
-- **"My baby is crying"** → Automatically pauses and resumes when ready
-- **"Only have a 6x6ft space"** → Selects space-appropriate exercises
-- **Real-time form correction** → "Lower your hips more" when squat form needs improvement
-- **Fatigue adaptation** → Switches to lower-impact exercises when user shows signs of fatigue
-
 ### User Flow: From Start to Summary
 
 Here's exactly how to use ChaosFit from setup to results:
