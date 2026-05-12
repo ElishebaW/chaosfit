@@ -107,6 +107,23 @@ Once traces are collected from real sessions, use them to identify where the age
 
 ---
 
+## Phase 5 — App Rename
+
+*Goal: replace "ChaosFit" with the new name across the codebase while keeping GCP infrastructure (project ID, Cloud Run service, Artifact Registry) unchanged to minimise blast radius.*
+
+- [ ] Decide on the new name
+- [ ] Update display strings: page title, `<title>` tag, UI copy, coaching messages
+- [ ] Update `APP_NAME` constant in `backend/main.py`
+- [ ] Update `pyproject.toml` project name and any references in `README.md` / docs
+- [ ] Update GitHub repo name and description (Settings → rename)
+- [ ] Update `chaosfit.app` domain / Vercel project display name if applicable
+- [ ] Search codebase for any remaining hardcoded "ChaosFit" / "chaosfit" strings and replace
+- [ ] Leave GCP project ID (`chaos-fit`), Cloud Run service name (`chaosfit`), Artifact Registry repo, and all CI env vars unchanged
+
+**Done when:** `grep -ri "chaosfit" .` returns only infrastructure identifiers (GCP/Cloud Run names), not user-facing strings.
+
+---
+
 ## What's Out of Scope (for now)
 
 - Nutrition tracking or dietary coaching
