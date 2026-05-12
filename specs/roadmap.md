@@ -1,4 +1,3 @@
-
 # ChaosFit — Roadmap
 
 Phases are ordered by what delivers the most mission-critical value first. Each phase is small enough to ship independently.
