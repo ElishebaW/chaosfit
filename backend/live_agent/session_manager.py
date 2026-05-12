@@ -147,7 +147,7 @@ class SessionManager:
 
         event = SessionEvent(ts=utc_now_iso(), event_type=event_type, payload=payload)
         try:
-            result = (
+            (
                 self._firestore.collection(SESSIONS_COLLECTION)
                 .document(session_id)
                 .collection(EVENTS_SUBCOLLECTION)
@@ -450,7 +450,7 @@ class SessionManager:
             live_model=state.live_model,
         )
         try:
-            result = self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(doc.to_dict(), merge=True)
+            self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(doc.to_dict(), merge=True)
             logging.info(f"Session document upserted: {state.session_id}")
         except Exception as e:
             logging.error(f"Failed to upsert session document: {e}")
@@ -461,7 +461,7 @@ class SessionManager:
         if not self._firestore:
             return
         try:
-            result = self._firestore.collection(SESSION_SUMMARIES_COLLECTION).document(summary.session_id).set(summary.to_dict(), merge=True)
+            self._firestore.collection(SESSION_SUMMARIES_COLLECTION).document(summary.session_id).set(summary.to_dict(), merge=True)
             logging.info(f"Session summary written: {summary.session_id}")
         except Exception as e:
             logging.error(f"Failed to write session summary: {e}")

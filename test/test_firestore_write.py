@@ -23,7 +23,7 @@ def test_firestore_write():
             "project": db.project
         }
         
-        result = doc_ref.set(test_data)
+        doc_ref.set(test_data)
         logging.info("Test document written successfully")
         print("✅ Firestore write test passed!")
         

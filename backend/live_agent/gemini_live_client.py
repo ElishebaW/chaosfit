@@ -145,7 +145,7 @@ class GeminiLiveClient:
         logging.info(f"Live session starting with model {model}")
         logging.info(f"System instruction length: {len(system_instruction)} chars")
         if "native-audio" in model.lower():
-            logging.warning(f"Using native audio model with truncated instruction to avoid 1008 errors")
+            logging.warning("Using native audio model with truncated instruction to avoid 1008 errors")
 
         async with self.client.aio.live.connect(model=model, config=config) as session:
             receive_task = asyncio.create_task(self._receive_loop(session=session, on_event=on_event))

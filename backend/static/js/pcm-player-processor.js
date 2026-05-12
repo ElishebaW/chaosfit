@@ -1,6 +1,7 @@
 /**
  * An audio worklet processor that stores the PCM audio data sent from the main thread
- * to a buffer and plays it.
+ * to a buffer and plays it. Supports an optional delay to align corrections with the
+ * video frame that triggered them (set via { command: 'setDelay', delaySeconds: N }).
  */
 class PCMPlayerProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -12,20 +13,34 @@ class PCMPlayerProcessor extends AudioWorkletProcessor {
     this.writeIndex = 0;
     this.readIndex = 0;
 
+    this.delaySeconds = 0;
+    this.pendingQueue = [];  // [{floats: Float32Array, playAt: number}]
+
     // Handle incoming messages from main thread
     this.port.onmessage = (event) => {
-      // Reset the buffer when 'endOfAudio' message received
       if (event.data.command === 'endOfAudio') {
-        this.readIndex = this.writeIndex; // Clear the buffer
+        this.readIndex = this.writeIndex;
+        this.pendingQueue = [];
         console.log("endOfAudio received, clearing the buffer.");
         return;
       }
 
-      // Decode the base64 data to int16 array.
+      if (event.data.command === 'setDelay') {
+        this.delaySeconds = Math.max(0, event.data.delaySeconds || 0);
+        return;
+      }
+
       const int16Samples = new Int16Array(event.data);
 
-      // Add the audio data to the buffer
-      this._enqueue(int16Samples);
+      if (this.delaySeconds <= 0) {
+        this._enqueue(int16Samples);
+      } else {
+        const floats = new Float32Array(int16Samples.length);
+        for (let i = 0; i < int16Samples.length; i++) {
+          floats[i] = int16Samples[i] / 32768;
+        }
+        this.pendingQueue.push({ floats, playAt: currentTime + this.delaySeconds });
+      }
     };
   }
 
@@ -46,9 +61,24 @@ class PCMPlayerProcessor extends AudioWorkletProcessor {
     }
   }
 
+  // Push pre-converted float data into the ring buffer.
+  _enqueueFloats(floats) {
+    for (let i = 0; i < floats.length; i++) {
+      this.buffer[this.writeIndex] = floats[i];
+      this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
+      if (this.writeIndex === this.readIndex) {
+        this.readIndex = (this.readIndex + 1) % this.bufferSize;
+      }
+    }
+  }
+
   // The system calls `process()` ~128 samples at a time (depending on the browser).
-  // We fill the output buffers from our ring buffer.
+  // We flush delayed audio whose scheduled time has arrived, then fill the output.
   process(inputs, outputs, parameters) {
+    // Flush pending audio items whose scheduled playback time has arrived.
+    while (this.pendingQueue.length > 0 && currentTime >= this.pendingQueue[0].playAt) {
+      this._enqueueFloats(this.pendingQueue.shift().floats);
+    }
 
     // Write a frame to the output
     const output = outputs[0];
@@ -73,4 +103,3 @@ class PCMPlayerProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('pcm-player-processor', PCMPlayerProcessor);
-

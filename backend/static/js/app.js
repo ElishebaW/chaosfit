@@ -673,6 +673,8 @@ function connectWebsocket() {
     document.getElementById("sendButton").disabled = false;
     setSessionPausedUI(false);
     addSubmitHandler();
+
+    pingTimer = setInterval(sendRttPing, PING_INTERVAL_MS);
   };
 
   // Handle incoming messages
@@ -680,6 +682,11 @@ function connectWebsocket() {
     // Parse the incoming ADK Event
     const adkEvent = JSON.parse(event.data);
     console.log("[AGENT TO CLIENT] ", adkEvent);
+
+    if (adkEvent.type === "pong") {
+      if (typeof adkEvent.sentAt === "number") handleRttPong(adkEvent.sentAt);
+      return;
+    }
 
     if (adkEvent.type === "session_state") {
       const status = adkEvent.status;
@@ -1094,6 +1101,10 @@ function connectWebsocket() {
   // Handle connection close
   websocket.onclose = function () {
     console.log("WebSocket connection closed.");
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    rttHistory = [];
+    rollingAvgRttMs = 0;
+    updateLatencyWarning();
     updateConnectionStatus(false);
     setSessionPausedUI(false);
     document.getElementById("sendButton").disabled = true;
@@ -1396,6 +1407,11 @@ const VIDEO_JPEG_QUALITY = 0.7;
 const VIDEO_COACH_INTERVAL_MS = 10000;
 const VIDEO_DIMENSION_IDEAL = 768;
 
+const PING_INTERVAL_MS = 5000;
+const RTT_HISTORY_SIZE = 5;
+const RTT_DEGRADE_THRESHOLD_MS = 2000;
+const RTT_WARN_THRESHOLD_MS = 3000;
+
 let isVideoStreaming = false;
 let videoStream = null;
 let videoFrameTimer = null;
@@ -1404,6 +1420,11 @@ let videoCanvas = null;
 let videoCtx = null;
 let isFrameEncodeInFlight = false;
 let videoFrameCount = 0;
+let videoFrameIntervalMs = VIDEO_FRAME_INTERVAL_MS;
+
+let rttHistory = [];
+let rollingAvgRttMs = 0;
+let pingTimer = null;
 
 async function startVideoStream() {
   if (isVideoStreaming) return;
@@ -1455,7 +1476,8 @@ async function startVideoStream() {
     videoPreviewPanel.classList.remove("hidden");
     cameraButton.textContent = "🛑 Stop Video";
 
-    videoFrameTimer = setInterval(sendCurrentVideoFrame, VIDEO_FRAME_INTERVAL_MS);
+    videoFrameIntervalMs = VIDEO_FRAME_INTERVAL_MS;
+    videoFrameTimer = setInterval(sendCurrentVideoFrame, videoFrameIntervalMs);
     videoCoachTimer = setInterval(sendPeriodicCoachPrompt, VIDEO_COACH_INTERVAL_MS);
     sendPeriodicCoachPrompt();
 
@@ -1523,6 +1545,45 @@ function toggleVideoStream() {
   }
 }
 
+function sendRttPing() {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+  websocket.send(JSON.stringify({ type: "ping", sentAt: Date.now() }));
+}
+
+function handleRttPong(sentAt) {
+  const rtt = Date.now() - sentAt;
+  rttHistory.push(rtt);
+  if (rttHistory.length > RTT_HISTORY_SIZE) rttHistory.shift();
+  rollingAvgRttMs = rttHistory.reduce((a, b) => a + b, 0) / rttHistory.length;
+  console.log(`[RTT] ${rtt}ms avg:${Math.round(rollingAvgRttMs)}ms`);
+  updateAdaptiveFrameRate();
+  updateLatencyWarning();
+  if (audioPlayerNode) {
+    audioPlayerNode.port.postMessage({ command: "setDelay", delaySeconds: rollingAvgRttMs / 1000 });
+  }
+}
+
+function updateAdaptiveFrameRate() {
+  const target = rollingAvgRttMs > RTT_DEGRADE_THRESHOLD_MS ? 2000 : VIDEO_FRAME_INTERVAL_MS;
+  if (target === videoFrameIntervalMs) return;
+  videoFrameIntervalMs = target;
+  if (isVideoStreaming && videoFrameTimer) {
+    clearInterval(videoFrameTimer);
+    videoFrameTimer = setInterval(sendCurrentVideoFrame, videoFrameIntervalMs);
+  }
+}
+
+function updateLatencyWarning() {
+  const banner = document.getElementById("latencyWarningBanner");
+  if (!banner) return;
+  if (rollingAvgRttMs > RTT_WARN_THRESHOLD_MS) {
+    banner.textContent = `High coaching latency: ${Math.round(rollingAvgRttMs)}ms — corrections may be delayed`;
+    banner.classList.remove("hidden");
+  } else {
+    banner.classList.add("hidden");
+  }
+}
+
 function sendPeriodicCoachPrompt() {
   if (isSessionPaused || !isVideoStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {
     return;
@@ -1563,6 +1624,7 @@ function sendCurrentVideoFrame() {
           type: "video",
           data: base64Data,
           mimeType: "image/jpeg",
+          capturedAt: Date.now(),
         }));
 
         videoFrameCount += 1;

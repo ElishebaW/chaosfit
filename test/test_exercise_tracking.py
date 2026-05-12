@@ -6,8 +6,6 @@ and displayed correctly in the summary page.
 """
 
 import asyncio
-import json
-from datetime import datetime
 from backend.live_agent.session_manager import SessionManager, SessionState
 from backend.firestore.schema import utc_now_iso
 
@@ -74,7 +72,7 @@ async def test_exercise_tracking():
     
     # Final state check
     final_state = session_manager.get(session_id)
-    print(f"\n📊 Final Session State:")
+    print("\n📊 Final Session State:")
     print(f"   🏃 Exercise History: {final_state.exercise_history}")
     print(f"   🎯 Current Exercise: {final_state.current_exercise}")
     print(f"   🔢 Total Reps: {final_state.cumulative_rep_count}")
@@ -91,26 +89,26 @@ async def test_exercise_tracking():
         session_goal="Multi-exercise test session"
     )
     
-    print(f"\n✅ Session summary created!")
+    print("\n✅ Session summary created!")
     print(f"   📝 Exercise Type: {final_state.current_exercise}")
     print(f"   🔢 Total Reps: {final_state.cumulative_rep_count}")
     print(f"   ⚠️  Total Corrections: {len(final_state.form_corrections)}")
     
     # Test summary data structure
-    print(f"\n🔍 Expected Summary Display:")
+    print("\n🔍 Expected Summary Display:")
     print(f"   📋 Exercise: {final_state.current_exercise} (last exercise)")
     print(f"   🔢 Reps: {final_state.cumulative_rep_count} (cumulative from ALL exercises)")
     print(f"   ⚠️  Corrections: {len(final_state.form_corrections)} (ALL corrections)")
     print(f"   📝 Corrections List: {final_state.form_corrections}")
     
-    print(f"\n🎯 Integration Test Complete!")
+    print("\n🎯 Integration Test Complete!")
     print("=" * 50)
     
     # Verify expectations
     expected_exercises = ["jumping_jack", "air_squat", "push_up"]
     actual_exercises = final_state.exercise_history
     
-    print(f"\n✅ Verification Results:")
+    print("\n✅ Verification Results:")
     print(f"   🏃 Expected exercises: {expected_exercises}")
     print(f"   🏃 Actual exercises: {actual_exercises}")
     

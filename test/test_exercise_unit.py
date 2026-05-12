@@ -114,26 +114,26 @@ def test_exercise_tracking_unit():
     final_state = session_manager.get(session_id)
     session_manager.complete_session(session_id)
     
-    print(f"\n📊 Final Session State:")
+    print("\n📊 Final Session State:")
     print(f"   🏃 Exercise History: {final_state.exercise_history}")
     print(f"   🎯 Current Exercise: {final_state.current_exercise}")
     print(f"   🔢 Total Reps: {final_state.cumulative_rep_count}")
     print(f"   ⚠️  Form Corrections: {final_state.form_corrections}")
     
-    print(f"\n✅ Session summary would be created with:")
+    print("\n✅ Session summary would be created with:")
     print(f"   📝 Exercise Type: {final_state.current_exercise} (last exercise)")
     print(f"   🔢 Total Reps: {final_state.cumulative_rep_count} (cumulative from ALL exercises)")
     print(f"   ⚠️  Total Corrections: {len(final_state.form_corrections)} (ALL corrections)")
     print(f"   📝 Corrections List: {final_state.form_corrections}")
     
-    print(f"\n🎯 Integration Test Complete!")
+    print("\n🎯 Integration Test Complete!")
     print("=" * 50)
     
     # Verify expectations
     expected_exercises = ["jumping_jack", "air_squat", "push_up"]
     actual_exercises = final_state.exercise_history
     
-    print(f"\n✅ Verification Results:")
+    print("\n✅ Verification Results:")
     print(f"   🏃 Expected exercises: {expected_exercises}")
     print(f"   🏃 Actual exercises: {actual_exercises}")
     
@@ -157,12 +157,12 @@ def test_exercise_tracking_unit():
         print(f"   ❌ Form corrections error: expected 5, got {len(final_state.form_corrections)}")
     
     # Test summary display expectations
-    print(f"\n📱 Expected Summary Page Display:")
-    print(f"   🏃 Exercise: PUSH_UP (last exercise)")
-    print(f"   🔢 Reps: 33 (cumulative total from ALL exercises)")
-    print(f"   ⚠️  Corrections: 5 (total from all exercises)")
-    print(f"   📝 Form Corrections Text: ['keep back straight', 'land softly', 'lower hips more', 'keep chest up', 'full extension', 'controlled descent']")
-    print(f"   ✅ Form corrections show as TEXT not timestamps")
+    print("\n📱 Expected Summary Page Display:")
+    print("   🏃 Exercise: PUSH_UP (last exercise)")
+    print("   🔢 Reps: 33 (cumulative total from ALL exercises)")
+    print("   ⚠️  Corrections: 5 (total from all exercises)")
+    print("   📝 Form Corrections Text: ['keep back straight', 'land softly', 'lower hips more', 'keep chest up', 'full extension', 'controlled descent']")
+    print("   ✅ Form corrections show as TEXT not timestamps")
     
     return True
 
