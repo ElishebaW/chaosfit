@@ -78,5 +78,4 @@ jobs:
             GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }}
             ENABLE_FIRESTORE=true
             GOOGLE_GENAI_USE_VERTEXAI=false
-          secrets: |
-            GOOGLE_API_KEY=GOOGLE_API_KEY:latest
+            GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
