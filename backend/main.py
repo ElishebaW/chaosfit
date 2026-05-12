@@ -7,7 +7,7 @@ import base64
 import binascii
 import json
 import logging
-import os
+import time
 import warnings
 from pathlib import Path
 from typing import Any
@@ -131,7 +131,7 @@ def _extract_end_summary(payload: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "healthy"}
 
 
 @app.get("/")
@@ -338,7 +338,14 @@ async def websocket_endpoint(
                     session_manager.resume_session(session_id)
                     await send_session_state("resumed")
                     continue
-                
+
+                if event_type == "ping":
+                    await safe_send_text(json.dumps({
+                        "type": "pong",
+                        "sentAt": payload.get("sentAt"),
+                    }))
+                    continue
+
                 if event_type == "exercise_update":
                     # Process exercise update events from coach tool
                     session_manager.append_event(
@@ -389,6 +396,15 @@ async def websocket_endpoint(
                     continue
 
                 if event_type in {"image", "video"}:
+                    captured_at = payload.get("capturedAt")
+                    if captured_at is not None:
+                        age_ms = time.time() * 1000 - float(captured_at)
+                        if age_ms > 3000:
+                            logger.warning(
+                                "Dropping stale %s frame age_ms=%.0f session_id=%s",
+                                event_type, age_ms, session_id,
+                            )
+                            continue
                     try:
                         raw = base64.b64decode(payload.get("data", ""), validate=True)
                     except (binascii.Error, ValueError):

@@ -27,7 +27,6 @@ RUN uv pip install --system -r backend/requirements.txt
 
 # Copy application code
 COPY backend/ ./backend/
-COPY .env.example .env
 
 # Create static files directory if it doesn't exist
 RUN mkdir -p backend/static
