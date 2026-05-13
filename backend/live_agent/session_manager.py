@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from google import genai
+from langsmith import traceable
 
 from backend.firestore.schema import (
     EVENTS_SUBCOLLECTION,
@@ -26,6 +27,31 @@ try:
     from google.cloud import firestore
 except Exception:  # pragma: no cover - optional in local dev
     firestore = None
+
+
+@traceable(name="session_setup", run_type="chain")
+def _trace_session_setup(session_id: str, parent_id: str | None, time_remaining_sec: int | None, live_model: str) -> dict[str, Any]:
+    return {"session_id": session_id, "parent_id": parent_id, "time_remaining_sec": time_remaining_sec, "live_model": live_model}
+
+
+@traceable(name="routine_planner", run_type="chain")
+def _trace_routine_plan(session_id: str, time_remaining_sec: int, exercise_history: list[str], source: str, block_name: str | None) -> dict[str, Any]:
+    return {"session_id": session_id, "time_remaining_sec": time_remaining_sec, "exercise_history": exercise_history, "source": source, "block_name": block_name}
+
+
+@traceable(name="exercise_detection", run_type="chain")
+def _trace_exercise_update(session_id: str, exercise_id: str | None, rep_count: int | None, cumulative_reps: int, new_corrections: int, interruption: bool) -> dict[str, Any]:
+    return {"session_id": session_id, "exercise_id": exercise_id, "rep_count": rep_count, "cumulative_reps": cumulative_reps, "new_corrections": new_corrections, "interruption": interruption}
+
+
+@traceable(name="interruption_handling", run_type="chain")
+def _trace_interruption(session_id: str, event_type: str, reason: str | None, pause_count: int, total_pause_time_seconds: float) -> dict[str, Any]:
+    return {"session_id": session_id, "event_type": event_type, "reason": reason, "pause_count": pause_count, "total_pause_time_seconds": total_pause_time_seconds}
+
+
+@traceable(name="session_summary_generation", run_type="chain")
+def _trace_session_summary(session_id: str, exercise_type: str | None, rep_count: int | None, interruption_count: int, correction_count: int, pause_count: int, total_pause_time_seconds: float) -> dict[str, Any]:
+    return {"session_id": session_id, "exercise_type": exercise_type, "rep_count": rep_count, "interruption_count": interruption_count, "correction_count": correction_count, "pause_count": pause_count, "total_pause_time_seconds": total_pause_time_seconds}
 
 
 @dataclass
@@ -99,6 +125,7 @@ class SessionManager:
             live_model=live_model,
         )
         self._mem[session_id] = state
+        _trace_session_setup(session_id, parent_id, time_remaining_sec, live_model)
         try:
             self._upsert_session_doc(state)
         except Exception:
@@ -195,26 +222,35 @@ class SessionManager:
                 logging.debug(f"Updated rep count: +{rep_count_int} (total: {state.cumulative_rep_count})")
             
         # Track form corrections
+        new_correction_count = 0
         form_corrections = payload.get("form_corrections")
         if isinstance(form_corrections, list):
-            new_corrections = []
             for correction in form_corrections:
                 correction_str = str(correction).strip()
                 if correction_str and correction_str not in state.form_corrections:
                     state.form_corrections.append(correction_str)
-                    new_corrections.append(correction_str)
-                    # Each new form correction counts as an interruption/coaching intervention
+                    new_correction_count += 1
                     state.coach_interruptions += 1
                     state.total_interruptions += 1
                     logging.debug(f"Form correction interruption (total: {state.total_interruptions})")
-            if new_corrections:
-                logging.debug(f"Added {len(new_corrections)} form corrections")
-                
+            if new_correction_count:
+                logging.debug(f"Added {new_correction_count} form corrections")
+
         # Track explicit interruptions (from tool response interruption flag)
-        if payload.get("interruption") is True:
+        interruption = payload.get("interruption") is True
+        if interruption:
             state.total_interruptions += 1
             state.coach_interruptions += 1
             logging.debug(f"Explicit coach interruption (total: {state.total_interruptions})")
+
+        _trace_exercise_update(
+            state.session_id,
+            state.current_exercise,
+            _as_int(payload.get("rep_count")),
+            state.cumulative_rep_count,
+            new_correction_count,
+            interruption,
+        )
     
     def _process_generic_event(self, state: SessionState, payload: dict[str, Any]) -> None:
         """Process generic events (legacy support)."""
@@ -316,6 +352,15 @@ class SessionManager:
                         f"pauses={state.pause_count}, "
                         f"total_pause_time={state.total_pause_time_seconds}s")
             
+            _trace_session_summary(
+                session_id,
+                final_exercise_type,
+                final_rep_count,
+                final_interruption_count,
+                len(final_form_corrections),
+                state.pause_count,
+                state.total_pause_time_seconds,
+            )
             self._write_summary(summary)
         except Exception as e:
             logging.error(f"Failed to record session summary for {session_id}: {e}")
@@ -331,7 +376,8 @@ class SessionManager:
         state.status = "paused"
         state.pause_reason = reason
         state.paused_at = utc_now_iso()
-        state.pause_count += 1  # Increment pause count
+        state.pause_count += 1
+        _trace_interruption(session_id, "pause", reason, state.pause_count, state.total_pause_time_seconds)
         self._upsert_session_doc(state)
         self.append_event(
             session_id,
@@ -347,7 +393,8 @@ class SessionManager:
         state.status = "active"
         state.pause_reason = None
         state.resumed_at = utc_now_iso()
-        state.total_pause_time_seconds += pause_duration_seconds  # Add to total pause time
+        state.total_pause_time_seconds += pause_duration_seconds
+        _trace_interruption(session_id, "resume", None, state.pause_count, state.total_pause_time_seconds)
         self._upsert_session_doc(state)
         self.append_event(
             session_id,
@@ -371,6 +418,7 @@ class SessionManager:
             exercise_history=state.exercise_history,
         )
         if vertex_block is not None:
+            _trace_routine_plan(session_id, remaining, state.exercise_history, "vertex_ai", vertex_block.get("name"))
             return vertex_block
 
         fallback = generate_next_unknown_time_block(
@@ -386,7 +434,7 @@ class SessionManager:
             block_duration_sec=min(remaining, 120),
             library=self._library,
         )
-        return {
+        block = {
             "name": fallback.name,
             "mode": fallback.mode,
             "duration_sec": fallback.duration_sec,
@@ -401,6 +449,8 @@ class SessionManager:
             "voice_script": fallback.voice_script,
             "source": "deterministic_fallback",
         }
+        _trace_routine_plan(session_id, remaining, state.exercise_history, "deterministic_fallback", fallback.name)
+        return block
 
     def _generate_next_block_with_vertex(
         self,
