@@ -14,6 +14,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from langsmith import traceable
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
@@ -45,6 +46,11 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 session_service = InMemorySessionService()
 runner = Runner(app_name=APP_NAME, agent=agent, session_service=session_service)
 session_manager = SessionManager()
+
+
+@traceable(name="ws_message_receipt", run_type="chain")
+def _trace_ws_message(event_type: str, size_bytes: int, received_at: float, session_id: str) -> dict[str, Any]:
+    return {"event_type": event_type, "size_bytes": size_bytes, "received_at": received_at, "session_id": session_id}
 
 
 def _safe_int(value: Any) -> int | None:
@@ -302,6 +308,7 @@ async def websocket_endpoint(
                     return
 
                 if "bytes" in message and message["bytes"] is not None:
+                    _trace_ws_message("binary_audio", len(message["bytes"]), time.time(), session_id)
                     if not session_manager.can_accept_media(session_id):
                         continue
                     audio_blob = types.Blob(
@@ -314,7 +321,9 @@ async def websocket_endpoint(
                 if "text" not in message or message["text"] is None:
                     continue
 
-                payload = json.loads(message["text"])
+                text = message["text"]
+                payload = json.loads(text)
+                _trace_ws_message(payload.get("type", "unknown"), len(text), time.time(), session_id)
                 logging.info(f"Received event: {payload.get('type')} with payload keys: {list(payload.keys())}")
                 
                 # Check for exercise data in payload

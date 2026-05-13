@@ -79,3 +79,6 @@ jobs:
             ENABLE_FIRESTORE=true
             GOOGLE_GENAI_USE_VERTEXAI=false
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+            LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
+            LANGSMITH_TRACING=true
+            LANGSMITH_PROJECT=chaosfit
