@@ -42,7 +42,9 @@ ignore = ["C901", "PLR0915"]
 asyncio_mode = "auto"
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+    "websockets>=15.0.1",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
