@@ -53,6 +53,16 @@ def _trace_ws_message(event_type: str, size_bytes: int, received_at: float, sess
     return {"event_type": event_type, "size_bytes": size_bytes, "received_at": received_at, "session_id": session_id}
 
 
+@traceable(name="video_frame_pipeline", run_type="chain")
+def _trace_video_frame(event_type: str, captured_at: float | None, age_ms: float | None, encoded_size_bytes: int, session_id: str) -> dict[str, Any]:
+    return {"event_type": event_type, "captured_at": captured_at, "age_ms": age_ms, "encoded_size_bytes": encoded_size_bytes, "session_id": session_id}
+
+
+@traceable(name="gemini_live_coach_turn", run_type="llm")
+def _trace_coach_turn(event_type: str, session_id: str, interrupted: bool) -> dict[str, Any]:
+    return {"event_type": event_type, "session_id": session_id, "interrupted": interrupted}
+
+
 def _safe_int(value: Any) -> int | None:
     if value is None:
         return None
@@ -406,6 +416,7 @@ async def websocket_endpoint(
 
                 if event_type in {"image", "video"}:
                     captured_at = payload.get("capturedAt")
+                    age_ms = None
                     if captured_at is not None:
                         age_ms = time.time() * 1000 - float(captured_at)
                         if age_ms > 3000:
@@ -421,6 +432,7 @@ async def websocket_endpoint(
                             "Skipping malformed %s frame for session_id=%s", event_type, session_id
                         )
                         continue
+                    _trace_video_frame(event_type, captured_at, age_ms, len(raw), session_id)
                     mime_type = payload.get("mimeType") or payload.get("mime_type") or "image/jpeg"
                     media_blob = types.Blob(mime_type=mime_type, data=raw)
                     live_request_queue.send_realtime(media_blob)
@@ -466,7 +478,9 @@ async def websocket_endpoint(
                     if tool_attrs:
                         logger.debug(f"Event has tool attributes: {tool_attrs}")
                 
-                if bool(getattr(event, "interrupted", False)):
+                interrupted = bool(getattr(event, "interrupted", False))
+                _trace_coach_turn(type(event).__name__, session_id, interrupted)
+                if interrupted:
                     interrupted_count += 1
                     logger.info(
                         "Interruption event session_id=%s user_id=%s interrupted_count=%s",
