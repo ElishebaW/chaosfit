@@ -28,7 +28,7 @@ from backend.reports.report_generator import SessionReportGenerator
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from backend.coach_agent.agent import agent  # noqa: E402  pylint: disable=wrong-import-position
+from backend.coach_agent.agent import agent, coach_prompt  # noqa: E402  pylint: disable=wrong-import-position
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,7 +51,7 @@ session_manager = SessionManager()
 @observe(name="gemini_live_coach_turn", as_type="generation")
 def _trace_coach_turn(event_type: str, session_id: str, user_id: str, interrupted: bool, model: str) -> dict[str, Any]:
     with propagate_attributes(session_id=session_id, user_id=user_id):
-        get_client().update_current_generation(model=model)
+        get_client().update_current_generation(model=model, prompt=coach_prompt)
         return {"event_type": event_type, "session_id": session_id, "interrupted": interrupted}
 
 

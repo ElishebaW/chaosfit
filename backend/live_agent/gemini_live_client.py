@@ -13,6 +13,8 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from langfuse import get_client as _lf_client
+
 from .form_feedback_prompt import build_live_system_instruction
 
 
@@ -105,16 +107,20 @@ class GeminiLiveClient:
         goal = session_goal or "Coach bodyweight workouts safely in real time."
         if len(goal) > 100:
             goal = goal[:100] + "..."
-        
-        system_instruction = build_live_system_instruction(session_goal=goal)
-        
-        # Further truncate if instruction is too long for native audio model
-        if "native-audio" in model.lower() and len(system_instruction) > 300:
-            system_instruction = (
-                "You are ChaosFit Coach. Provide short form feedback.\n"
-                "Prioritize safety. Interrupt risky form with <= 12 words.\n"
-                f"Goal: {goal}"
-            )
+
+        is_native_audio = "native-audio" in model.lower()
+        prompt_name = "coach-system-instruction-native-audio" if is_native_audio else "coach-system-instruction"
+        try:
+            _prompt = _lf_client().get_prompt(prompt_name, label="production")
+            system_instruction = _prompt.compile(goal=goal)
+        except Exception:
+            system_instruction = build_live_system_instruction(session_goal=goal)
+            if is_native_audio and len(system_instruction) > 300:
+                system_instruction = (
+                    "You are ChaosFit Coach. Provide short form feedback.\n"
+                    "Prioritize safety. Interrupt risky form with <= 12 words.\n"
+                    f"Goal: {goal}"
+                )
 
         config = {
             "response_modalities": ["AUDIO"],

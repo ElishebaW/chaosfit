@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from google import genai
-from langfuse import observe, propagate_attributes
+from langfuse import get_client as _lf_client, observe, propagate_attributes
 
 from backend.firestore.schema import (
     EVENTS_SUBCOLLECTION,
@@ -468,12 +468,21 @@ class SessionManager:
         if not self._vertex:
             return None
             
-        prompt = build_next_block_prompt(
-            time_remaining_sec=time_remaining_sec,
-            recent_form_score=recent_form_score,
-            recent_fatigue=recent_fatigue,
-            exercise_history=exercise_history,
-        )
+        try:
+            _prompt_obj = _lf_client().get_prompt("adaptive-block-request", label="production")
+            prompt = _prompt_obj.compile(
+                time_remaining_sec=str(time_remaining_sec),
+                recent_form_score=json.dumps(recent_form_score),
+                recent_fatigue=json.dumps(recent_fatigue),
+                exercise_history=json.dumps(exercise_history[-8:]),
+            )
+        except Exception:
+            prompt = build_next_block_prompt(
+                time_remaining_sec=time_remaining_sec,
+                recent_form_score=recent_form_score,
+                recent_fatigue=recent_fatigue,
+                exercise_history=exercise_history,
+            )
         try:
             response = self._vertex.models.generate_content(
                 model=os.getenv("NEXT_BLOCK_MODEL", "gemini-2.5-flash"),
