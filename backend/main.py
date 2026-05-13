@@ -14,7 +14,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from langfuse import observe
+from langfuse import get_client, observe, propagate_attributes
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
@@ -49,8 +49,10 @@ session_manager = SessionManager()
 
 
 @observe(name="gemini_live_coach_turn", as_type="generation")
-def _trace_coach_turn(event_type: str, session_id: str, interrupted: bool) -> dict[str, Any]:
-    return {"event_type": event_type, "session_id": session_id, "interrupted": interrupted}
+def _trace_coach_turn(event_type: str, session_id: str, user_id: str, interrupted: bool, model: str) -> dict[str, Any]:
+    with propagate_attributes(session_id=session_id, user_id=user_id):
+        get_client().update_current_generation(model=model)
+        return {"event_type": event_type, "session_id": session_id, "interrupted": interrupted}
 
 
 def _safe_int(value: Any) -> int | None:
@@ -466,7 +468,7 @@ async def websocket_endpoint(
                         logger.debug(f"Event has tool attributes: {tool_attrs}")
                 
                 interrupted = bool(getattr(event, "interrupted", False))
-                _trace_coach_turn(type(event).__name__, session_id, interrupted)
+                _trace_coach_turn(type(event).__name__, session_id, user_id, interrupted, str(agent.model))
                 if interrupted:
                     interrupted_count += 1
                     logger.info(
