@@ -11,7 +11,6 @@ Phases are ordered by what delivers the most mission-critical value first. Each 
 ### CI/CD Pipeline
 - [x] GitHub Actions workflow: lint → test → build Docker image → push to Artifact Registry → deploy to Cloud Run
 - [x] Block merges to `main` on failing tests or build errors
-- [x] Separate staging and production Cloud Run services (deploy to staging first)
 - [x] Secrets managed via GitHub Actions secrets → Cloud Run env vars (no `.env` in CI)
 
 ### Cloud Run Bug Fixes
@@ -90,6 +89,20 @@ Once traces are collected from real sessions, use them to identify where the age
 - [ ] Clearer session summary UI (not just JSON, a readable post-workout card)
 
 **Done when:** A first-time user can complete a session start-to-summary without reading docs.
+
+---
+
+## Phase 3.5 — Environments
+
+*Goal: separate dev from production so real users never hit unstable code.*
+
+- [ ] Create a staging Cloud Run service (mirrors production config, deploys on every merge to `main`)
+- [ ] Create a production Cloud Run service (promoted manually or on tag)
+- [ ] Update CI to deploy to staging automatically; add a manual promotion step to production
+- [ ] Separate Firestore databases or collections for staging vs production
+- [ ] Update GitHub Actions secrets to hold staging and production credentials independently
+
+**Done when:** A merge to `main` deploys to staging automatically, and production is promoted deliberately — no user-facing traffic touches unvalidated code.
 
 ---
 
