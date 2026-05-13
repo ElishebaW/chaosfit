@@ -9,25 +9,25 @@ Phases are ordered by what delivers the most mission-critical value first. Each 
 *Goal: make the deployed app stable and measurable before building on top of it.*
 
 ### CI/CD Pipeline
-- [ ] GitHub Actions workflow: lint → test → build Docker image → push to Artifact Registry → deploy to Cloud Run
-- [ ] Block merges to `main` on failing tests or build errors
-- [ ] Separate staging and production Cloud Run services (deploy to staging first)
-- [ ] Secrets managed via GitHub Actions secrets → Cloud Run env vars (no `.env` in CI)
+- [x] GitHub Actions workflow: lint → test → build Docker image → push to Artifact Registry → deploy to Cloud Run
+- [x] Block merges to `main` on failing tests or build errors
+- [x] Separate staging and production Cloud Run services (deploy to staging first)
+- [x] Secrets managed via GitHub Actions secrets → Cloud Run env vars (no `.env` in CI)
 
 ### Cloud Run Bug Fixes
-- [ ] Audit and fix current deployment failures (cold start timeouts, missing env vars, health check misconfiguration)
-- [ ] Confirm `/healthz` returns `{"status": "healthy"}` reliably after deploy
-- [ ] Set minimum instances to 1 to eliminate cold-start latency for live demos
+- [x] Audit and fix current deployment failures (cold start timeouts, missing env vars, health check misconfiguration)
+- [x] Confirm `/healthz` returns `{"status": "healthy"}` reliably after deploy
+- [x] Set minimum instances to 1 to eliminate cold-start latency for live demos
 
 ### Audio/Video Sync & Coaching Latency
 The coaching agent's audio corrections are responding to frames that may be 1–2+ seconds stale. Three root causes to fix in order:
 
-- [ ] **Stamp frames** — add `capturedAt: Date.now()` to every video payload in `app.js:1562`
-- [ ] **Stale frame rejection** — server skips frames older than 3s (`main.py:273–415`); logs a warning
-- [ ] **RTT telemetry** — client records `sentAt` per message; server echoes it back; client computes and logs round-trip time
-- [ ] **Adaptive frame rate** — drop from 1 FPS to 0.5 FPS when RTT exceeds 2s; recover automatically
-- [ ] **Buffered audio playback** — delay audio in `pcm-player-processor.js` by rolling average RTT so corrections align with the movement that triggered them
-- [ ] **User-visible degradation indicator** — surface a warning in the UI if coaching latency exceeds a configurable threshold (default: 3s)
+- [x] **Stamp frames** — add `capturedAt: Date.now()` to every video payload in `app.js:1562`
+- [x] **Stale frame rejection** — server skips frames older than 3s (`main.py:273–415`); logs a warning
+- [x] **RTT telemetry** — client records `sentAt` per message; server echoes it back; client computes and logs round-trip time
+- [x] **Adaptive frame rate** — drop from 1 FPS to 0.5 FPS when RTT exceeds 2s; recover automatically
+- [x] **Buffered audio playback** — delay audio in `pcm-player-processor.js` by rolling average RTT so corrections align with the movement that triggered them
+- [x] **User-visible degradation indicator** — surface a warning in the UI if coaching latency exceeds a configurable threshold (default: 3s)
 
 **Done when:** A coaching correction of "keep your chest up" reliably refers to what the user is doing right now, and the app reports its own latency health.
 
@@ -109,8 +109,9 @@ Once traces are collected from real sessions, use them to identify where the age
 
 ## Phase 5 — App Rename
 
-*Goal: replace "ChaosFit" with the new name across the codebase while keeping GCP infrastructure (project ID, Cloud Run service, Artifact Registry) unchanged to minimise blast radius.*
+*Goal: replace "ChaosFit" with the new name everywhere — codebase and GCP infrastructure.*
 
+### Code & Display Strings
 - [ ] Decide on the new name
 - [ ] Update display strings: page title, `<title>` tag, UI copy, coaching messages
 - [ ] Update `APP_NAME` constant in `backend/main.py`
@@ -118,9 +119,19 @@ Once traces are collected from real sessions, use them to identify where the age
 - [ ] Update GitHub repo name and description (Settings → rename)
 - [ ] Update `chaosfit.app` domain / Vercel project display name if applicable
 - [ ] Search codebase for any remaining hardcoded "ChaosFit" / "chaosfit" strings and replace
-- [ ] Leave GCP project ID (`chaos-fit`), Cloud Run service name (`chaosfit`), Artifact Registry repo, and all CI env vars unchanged
 
-**Done when:** `grep -ri "chaosfit" .` returns only infrastructure identifiers (GCP/Cloud Run names), not user-facing strings.
+### GCP Infrastructure Rebuild (new project ID to match new name)
+- [ ] Create new GCP project with a name-matched project ID
+- [ ] Enable required APIs: Cloud Run, Artifact Registry, Firestore, IAM
+- [ ] Create Artifact Registry repository in the new project
+- [ ] Create Cloud Run service in the new project
+- [ ] Set up Workload Identity Federation: new pool, provider, service account, IAM bindings
+- [ ] Update GitHub Actions secrets: `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GOOGLE_API_KEY`
+- [ ] Update all project ID references in `ci.yml` (`PROJECT_ID`, `REPOSITORY`, `SERVICE`, image path)
+- [ ] Trigger a CI deploy to the new project and confirm `/healthz` passes
+- [ ] Delete the old `chaos-fit` GCP project once new project is confirmed working
+
+**Done when:** The app is live under the new name on a new GCP project, and the old `chaos-fit` project is deleted.
 
 ---
 
