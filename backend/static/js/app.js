@@ -703,6 +703,7 @@ function connectWebsocket() {
         }
       } else if (status === "ended") {
         setSessionPausedUI(false);
+        stopHudSession();
       }
       addConsoleEntry("incoming", `Session state: ${status}`, adkEvent, "⏯️", "system");
       return;

@@ -31,7 +31,9 @@ import uuid
 from typing import Any
 
 import websockets
-from langsmith import traceable
+from langfuse import Langfuse, observe
+
+_langfuse = Langfuse()
 
 # Minimal valid 1×1 JPEG — satisfies base64 decode without sending real video data
 _FRAME_B64 = (
@@ -191,7 +193,7 @@ async def _run_scenario(base_url: str, scenario: str, run_index: int) -> dict[st
     }
 
 
-@traceable(name="trace_harness_scenario", run_type="chain")
+@observe(name="trace_harness_scenario")
 async def _traced_scenario(base_url: str, scenario: str, run_index: int) -> dict[str, Any]:
     """Parent LangSmith span — session_id links client run to server-side pipeline traces."""
     return await _run_scenario(base_url, scenario, run_index)
@@ -239,7 +241,8 @@ async def main() -> None:
             if r["error"]:
                 print(f"  [{r['scenario']} #{r['run_index']}] {r['error']}")
 
-    print("\nCheck https://smith.langsmith.com for traces tagged 'trace_harness_scenario'.")
+    _langfuse.flush()
+    print("\nCheck https://cloud.langfuse.com for traces tagged 'trace_harness_scenario'.")
 
 
 if __name__ == "__main__":

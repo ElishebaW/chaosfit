@@ -15,7 +15,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "uvicorn[standard]>=0.32.0",
     "google-cloud-firestore>=2.24.0",
-    "langsmith>=0.8.3",
+    "langfuse>=2.0.0",
 ]
 
 [project.optional-dependencies]

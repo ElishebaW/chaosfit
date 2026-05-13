@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from google import genai
-from langsmith import traceable
+from langfuse import observe
 
 from backend.firestore.schema import (
     EVENTS_SUBCOLLECTION,
@@ -29,27 +29,27 @@ except Exception:  # pragma: no cover - optional in local dev
     firestore = None
 
 
-@traceable(name="session_setup", run_type="chain")
+@observe(name="session_setup")
 def _trace_session_setup(session_id: str, parent_id: str | None, time_remaining_sec: int | None, live_model: str) -> dict[str, Any]:
     return {"session_id": session_id, "parent_id": parent_id, "time_remaining_sec": time_remaining_sec, "live_model": live_model}
 
 
-@traceable(name="routine_planner", run_type="chain")
+@observe(name="routine_planner")
 def _trace_routine_plan(session_id: str, time_remaining_sec: int, exercise_history: list[str], source: str, block_name: str | None) -> dict[str, Any]:
     return {"session_id": session_id, "time_remaining_sec": time_remaining_sec, "exercise_history": exercise_history, "source": source, "block_name": block_name}
 
 
-@traceable(name="exercise_detection", run_type="chain")
+@observe(name="exercise_detection")
 def _trace_exercise_update(session_id: str, exercise_id: str | None, rep_count: int | None, cumulative_reps: int, new_corrections: int, interruption: bool) -> dict[str, Any]:
     return {"session_id": session_id, "exercise_id": exercise_id, "rep_count": rep_count, "cumulative_reps": cumulative_reps, "new_corrections": new_corrections, "interruption": interruption}
 
 
-@traceable(name="interruption_handling", run_type="chain")
+@observe(name="interruption_handling")
 def _trace_interruption(session_id: str, event_type: str, reason: str | None, pause_count: int, total_pause_time_seconds: float) -> dict[str, Any]:
     return {"session_id": session_id, "event_type": event_type, "reason": reason, "pause_count": pause_count, "total_pause_time_seconds": total_pause_time_seconds}
 
 
-@traceable(name="session_summary_generation", run_type="chain")
+@observe(name="session_summary_generation")
 def _trace_session_summary(session_id: str, exercise_type: str | None, rep_count: int | None, interruption_count: int, correction_count: int, pause_count: int, total_pause_time_seconds: float) -> dict[str, Any]:
     return {"session_id": session_id, "exercise_type": exercise_type, "rep_count": rep_count, "interruption_count": interruption_count, "correction_count": correction_count, "pause_count": pause_count, "total_pause_time_seconds": total_pause_time_seconds}
 
