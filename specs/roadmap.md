@@ -1,5 +1,6 @@
 # ChaosFit — Roadmap
 
+
 Phases are ordered by what delivers the most mission-critical value first. Each phase is small enough to ship independently.
 
 ---
@@ -36,21 +37,32 @@ The coaching agent's audio corrections are responding to frames that may be 1–
 
 *Goal: make the AI coach more accurate and trustworthy during a session, and give us the tooling to measure it.*
 
-### Agent Observability — LangSmith Tracing
+### Agent Observability — Langfuse Tracing
 
-**Decision:** Add traces to every workflow element first. Observed trace data will drive what evals get written — not assumptions.
+**Decision:** Instrument at the application layer only — per-session state transitions, not per-frame I/O events. High-frequency events (video frames, audio chunks) belong in logs/metrics, not traces. Observed trace data drives eval design.
 
-Trace each step independently so timing, inputs, and failures are visible per component:
+**Platform:** Langfuse (open source, unlimited traces on free tier). LangSmith was evaluated and rejected — per-trace pricing exhausted the 5k free quota in a single 30-minute session.
 
-- [ ] **WebSocket message receipt** — trace each inbound message: type, size, timestamp
-- [ ] **Video frame pipeline** — trace frame capture → encode → send; include `capturedAt`, frame age by the time it's processed server-side
-- [ ] **Session setup / routine planner** — trace inputs (duration, equipment, level) → generated routine plan; log which exercise blocks were selected
-- [ ] **Gemini Live API call (ADK)** — trace every coach turn: prompt context sent, response received, tokens, latency
-- [ ] **Exercise detection / rep counting** — trace detected exercise type, confidence, rep delta per frame
-- [ ] **Interruption handling** — trace pause/resume events: session state before and after, time paused, context recovered
-- [ ] **Session summary generation** — trace final aggregation: reps, corrections, duration, any dropped state
+- [x] **Session setup / routine planner** — trace inputs → generated routine plan
+- [x] **Gemini Live API call (ADK)** — trace every coach turn with model name, session_id, user_id
+- [x] **Exercise detection / rep counting** — trace detected exercise type, rep delta per update
+- [x] **Interruption handling** — trace pause/resume events with time paused
+- [x] **Session summary generation** — trace final aggregation: reps, corrections, duration
+- [x] **Session grouping** — all spans for a session linked via `propagate_attributes(session_id=...)` in Langfuse Sessions view
+- [x] **Scripted trace harness** — `test/trace_harness.py` drives 3 scenarios × 10 runs; 10/10 confirmed in Langfuse
+- ~~**WebSocket message receipt**~~ — removed; per-message tracing is infrastructure-layer noise
+- ~~**Video frame pipeline**~~ — removed; per-frame tracing generated 8k traces in one session
 
-Once traces are collected from real sessions, use them to identify where the agent drifts, fails, or is slow — then define evals from that evidence.
+### Prompt Management — Langfuse
+
+- [x] **4 prompts in Langfuse** — `coach-system-instruction`, `coach-system-instruction-native-audio`, `session-summary`, `adaptive-block-request`
+- [x] **Runtime fetch** — all callers use `get_prompt(label="production").compile()` with hardcoded fallback
+- [x] **Prompt linked to traces** — `gemini_live_coach_turn` generation spans show prompt name + version
+- [x] **Upload script** — `scripts/upload_prompts.py` creates new versions without code changes
+
+### Evals (next)
+
+Once real session traces are collected, use them to identify where the agent drifts or fails:
 
 - [ ] Define eval dataset from trace-observed failures (not pre-assumed)
 - [ ] Write evaluators targeting the specific gaps traces reveal
@@ -62,7 +74,7 @@ Once traces are collected from real sessions, use them to identify where the age
 - [ ] Advanced pose estimation for common bodyweight movements (squat, push-up, plank)
 - [ ] Expand exercise library beyond current 20+ movements
 
-**Done when:** LangSmith evals are running in CI and rep counting is reliable enough that a user trusts the summary numbers.
+**Done when:** Langfuse evals are running in CI and rep counting is reliable enough that a user trusts the summary numbers.
 
 ---
 
