@@ -310,6 +310,7 @@ async def websocket_endpoint(
                     return
 
                 if "bytes" in message and message["bytes"] is not None:
+                    logger.debug("binary_audio size_bytes=%d session_id=%s", len(message["bytes"]), session_id)
                     if not session_manager.can_accept_media(session_id):
                         continue
                     audio_blob = types.Blob(
@@ -423,6 +424,7 @@ async def websocket_endpoint(
                         )
                         continue
                     mime_type = payload.get("mimeType") or payload.get("mime_type") or "image/jpeg"
+                    logger.debug("media_frame event_type=%s age_ms=%s size_bytes=%d session_id=%s", event_type, f"{age_ms:.0f}" if age_ms is not None else "n/a", len(raw), session_id)
                     media_blob = types.Blob(mime_type=mime_type, data=raw)
                     live_request_queue.send_realtime(media_blob)
                     continue
