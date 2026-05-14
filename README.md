@@ -264,14 +264,19 @@ The backend also injects the routine plan into the coach context so the coach ca
 ### Infrastructure & DevOps
 - **uv** - Fast Python package manager
 - **Uvicorn** - ASGI server for FastAPI deployment
-- **Google Cloud Platform** - Hosting and database services
-- **Docker-ready** - Containerized deployment support
+- **Google Cloud Run** - Serverless container hosting with auto-scaling
+- **Google Artifact Registry** - Docker image storage
+- **GitHub Actions** - CI/CD: lint → test → build → push → deploy
+- **Docker** - Containerized deployment
 
 ### ML/AI Components
 - **Gemini Live API (gemini-2.5-flash-native-audio-preview-12-2025)** - Real-time multimodal AI
 - **Custom exercise detection** - Pattern matching for workout identification
 - **Form analysis algorithms** - Computer vision for posture assessment
 - **Adaptive scheduling engine** - Dynamic workout optimization
+
+### Observability
+- **Langfuse** - LLM pipeline tracing and evaluation (open source, self-hostable)
 
 ### Troubleshooting Common Issues
 
@@ -354,6 +359,49 @@ uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 - **Social features** for parent community support
 - **Integration with wearables** for heart rate and intensity tracking
 - **Mobile app** for better camera positioning and user experience
+
+## Architecture Decisions
+
+### Observability: Langfuse over LangSmith
+
+ChaosFit uses [Langfuse](https://langfuse.com) for LLM pipeline tracing instead of LangSmith. This was an intentional choice driven by pricing model alignment, not feature gaps.
+
+**Why not LangSmith?**
+
+LangSmith charges per trace. Every call to a `@traceable`-decorated function counts against a monthly quota (5,000 on the free tier). This model incentivizes under-instrumentation — the more thoroughly you observe your system, the faster you exhaust your budget.
+
+In a real-time AI application like ChaosFit, the gap between "correctly instrumented" and "budget-safe" is large. A single 30-minute coaching session generates:
+- ~1,800 video frames at 1 FPS
+- Continuous PCM audio chunks (~10 per second = ~18,000 chunks)
+- Multiple Gemini Live API turns, exercise detection events, and session state transitions
+
+If you naively instrument every inbound message — which is the natural starting point — you generate thousands of traces per session. One session exhausted the entire free monthly quota.
+
+**The real lesson: trace granularity**
+
+In distributed systems, observability has three layers:
+- **Logs** — raw, high-frequency events (frame received, audio chunk received)
+- **Metrics** — aggregated counters and gauges (frames per second, audio chunk count)
+- **Traces** — business-level state transitions with full context (session started, coach responded, exercise detected)
+
+High-frequency I/O events belong in logs or metrics. Traces are for application-layer events where you need to see inputs, outputs, and timing in one view. Putting a trace on every video frame is the equivalent of creating a database row for every network packet — technically possible, practically useless, and expensive.
+
+ChaosFit instruments traces at the application layer only:
+- Session setup and routine planning
+- Exercise detection and rep counting (per exercise update, not per frame)
+- Interruption and pause/resume events
+- Gemini Live API coach turns
+- Session summary generation
+
+**Why Langfuse?**
+
+Langfuse's free cloud tier is unlimited on traces — they charge for team seats and enterprise features, not volume. This pricing model aligns with correct instrumentation practice: you can observe as much as is genuinely useful without a cost penalty.
+
+Langfuse is also open source (MIT license) and self-hostable. For a production deployment, it can run as a sidecar service on the same infrastructure with no ongoing per-trace cost. This matters at scale: 1,000 users × 30-minute sessions × correctly-scoped traces is a manageable volume on a fixed-cost basis, not an unbounded variable cost.
+
+Finally, ChaosFit uses Google ADK directly, not LangChain. LangSmith's deepest integrations are LangChain-native; the benefit of tight LangChain tooling doesn't apply here. Langfuse is framework-agnostic.
+
+---
 
 ## License
 

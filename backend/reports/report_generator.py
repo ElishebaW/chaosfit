@@ -19,6 +19,11 @@ try:
 except Exception:  # pragma: no cover
     genai = None
 
+try:
+    from langfuse import get_client as _lf_client
+except Exception:  # pragma: no cover
+    _lf_client = None  # type: ignore[assignment]
+
 
 class SessionReportGenerator:
     def __init__(self, client: "firestore.Client | None"):
@@ -100,20 +105,31 @@ class SessionReportGenerator:
 
         duration_text = f"{duration_sec} seconds" if duration_sec is not None else "unknown duration"
 
-        prompt = (
-            "You are an intense but supportive CrossFit coach writing a post-workout recap. "
-            "Write in a crisp, earned tone (no fluff).\n\n"
-            "Return STRICT JSON with exactly these keys:\n"
-            "- summary_text: a single paragraph recap of what the athlete did\n"
-            "- motivational_closing_line: one short, punchy closing line (board-signoff style)\n\n"
-            "Session data:\n"
-            f"- exercise_type: {exercise}\n"
-            f"- rep_count: {rep_count}\n"
-            f"- form_corrections: {corrections}\n"
-            f"- interruption_count: {interruptions}\n"
-            f"- duration: {duration_text}\n"
-            f"- session_goal: {goal}\n"
-        )
+        try:
+            _prompt_obj = _lf_client().get_prompt("session-summary", label="production")
+            prompt = _prompt_obj.compile(
+                exercise=exercise,
+                rep_count=str(rep_count),
+                corrections=str(corrections),
+                interruptions=str(interruptions),
+                duration_text=duration_text,
+                goal=goal,
+            )
+        except Exception:
+            prompt = (
+                "You are an intense but supportive CrossFit coach writing a post-workout recap. "
+                "Write in a crisp, earned tone (no fluff).\n\n"
+                "Return STRICT JSON with exactly these keys:\n"
+                "- summary_text: a single paragraph recap of what the athlete did\n"
+                "- motivational_closing_line: one short, punchy closing line (board-signoff style)\n\n"
+                "Session data:\n"
+                f"- exercise_type: {exercise}\n"
+                f"- rep_count: {rep_count}\n"
+                f"- form_corrections: {corrections}\n"
+                f"- interruption_count: {interruptions}\n"
+                f"- duration: {duration_text}\n"
+                f"- session_goal: {goal}\n"
+            )
 
         try:
             response = self._genai_client.models.generate_content(

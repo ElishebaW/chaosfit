@@ -79,6 +79,6 @@ jobs:
             ENABLE_FIRESTORE=true
             GOOGLE_GENAI_USE_VERTEXAI=false
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
-            LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
-            LANGSMITH_TRACING=true
-            LANGSMITH_PROJECT=chaosfit
+            LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }}
+            LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }}
+            LANGFUSE_BASE_URL=https://us.cloud.langfuse.com

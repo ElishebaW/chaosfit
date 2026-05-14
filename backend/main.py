@@ -14,7 +14,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from langsmith import traceable
+from langfuse import get_client, observe, propagate_attributes
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
@@ -28,7 +28,7 @@ from backend.reports.report_generator import SessionReportGenerator
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from backend.coach_agent.agent import agent  # noqa: E402  pylint: disable=wrong-import-position
+from backend.coach_agent.agent import agent, coach_prompt  # noqa: E402  pylint: disable=wrong-import-position
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,19 +48,11 @@ runner = Runner(app_name=APP_NAME, agent=agent, session_service=session_service)
 session_manager = SessionManager()
 
 
-@traceable(name="ws_message_receipt", run_type="chain")
-def _trace_ws_message(event_type: str, size_bytes: int, received_at: float, session_id: str) -> dict[str, Any]:
-    return {"event_type": event_type, "size_bytes": size_bytes, "received_at": received_at, "session_id": session_id}
-
-
-@traceable(name="video_frame_pipeline", run_type="chain")
-def _trace_video_frame(event_type: str, captured_at: float | None, age_ms: float | None, encoded_size_bytes: int, session_id: str) -> dict[str, Any]:
-    return {"event_type": event_type, "captured_at": captured_at, "age_ms": age_ms, "encoded_size_bytes": encoded_size_bytes, "session_id": session_id}
-
-
-@traceable(name="gemini_live_coach_turn", run_type="llm")
-def _trace_coach_turn(event_type: str, session_id: str, interrupted: bool) -> dict[str, Any]:
-    return {"event_type": event_type, "session_id": session_id, "interrupted": interrupted}
+@observe(name="gemini_live_coach_turn", as_type="generation")
+def _trace_coach_turn(event_type: str, session_id: str, user_id: str, interrupted: bool, model: str) -> dict[str, Any]:
+    with propagate_attributes(session_id=session_id, user_id=user_id):
+        get_client().update_current_generation(model=model, prompt=coach_prompt)
+        return {"event_type": event_type, "session_id": session_id, "interrupted": interrupted}
 
 
 def _safe_int(value: Any) -> int | None:
@@ -318,7 +310,7 @@ async def websocket_endpoint(
                     return
 
                 if "bytes" in message and message["bytes"] is not None:
-                    _trace_ws_message("binary_audio", len(message["bytes"]), time.time(), session_id)
+                    logger.debug("binary_audio size_bytes=%d session_id=%s", len(message["bytes"]), session_id)
                     if not session_manager.can_accept_media(session_id):
                         continue
                     audio_blob = types.Blob(
@@ -333,7 +325,6 @@ async def websocket_endpoint(
 
                 text = message["text"]
                 payload = json.loads(text)
-                _trace_ws_message(payload.get("type", "unknown"), len(text), time.time(), session_id)
                 logging.info(f"Received event: {payload.get('type')} with payload keys: {list(payload.keys())}")
                 
                 # Check for exercise data in payload
@@ -432,8 +423,8 @@ async def websocket_endpoint(
                             "Skipping malformed %s frame for session_id=%s", event_type, session_id
                         )
                         continue
-                    _trace_video_frame(event_type, captured_at, age_ms, len(raw), session_id)
                     mime_type = payload.get("mimeType") or payload.get("mime_type") or "image/jpeg"
+                    logger.debug("media_frame event_type=%s age_ms=%s size_bytes=%d session_id=%s", event_type, f"{age_ms:.0f}" if age_ms is not None else "n/a", len(raw), session_id)
                     media_blob = types.Blob(mime_type=mime_type, data=raw)
                     live_request_queue.send_realtime(media_blob)
                     continue
@@ -479,7 +470,7 @@ async def websocket_endpoint(
                         logger.debug(f"Event has tool attributes: {tool_attrs}")
                 
                 interrupted = bool(getattr(event, "interrupted", False))
-                _trace_coach_turn(type(event).__name__, session_id, interrupted)
+                _trace_coach_turn(type(event).__name__, session_id, user_id, interrupted, str(agent.model))
                 if interrupted:
                     interrupted_count += 1
                     logger.info(
