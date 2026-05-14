@@ -25,6 +25,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from backend.live_agent.session_manager import SessionManager
 from backend.reports.report_generator import SessionReportGenerator
+from backend.session_utils import extract_end_summary, normalize_corrections, safe_int, safe_str
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -55,34 +56,9 @@ def _trace_coach_turn(event_type: str, session_id: str, user_id: str, interrupte
         return {"event_type": event_type, "session_id": session_id, "interrupted": interrupted}
 
 
-def _safe_int(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_str(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text if text else None
-
-
-def _normalize_corrections(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        out: list[str] = []
-        for item in value:
-            entry = _safe_str(item)
-            if entry:
-                out.append(entry)
-        return out
-    single = _safe_str(value)
-    return [single] if single else []
+_safe_int = safe_int
+_safe_str = safe_str
+_normalize_corrections = normalize_corrections
 
 
 async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> None:
@@ -120,22 +96,7 @@ async def _process_coach_tool_event(event: Any, session_id: str, session_manager
         logger.error(f"Failed to process coach tool event: {e}")
 
 
-def _extract_end_summary(payload: dict[str, Any]) -> dict[str, Any]:
-    summary_block = payload.get("summary")
-    if not isinstance(summary_block, dict):
-        summary_block = {}
-    exercise_type = _safe_str(summary_block.get("exercise_type") or payload.get("exercise_type"))
-    rep_count = _safe_int(summary_block.get("rep_count") or payload.get("rep_count"))
-    session_goal = _safe_str(summary_block.get("session_goal") or payload.get("session_goal"))
-    corrections = _normalize_corrections(
-        summary_block.get("form_corrections") or payload.get("form_corrections")
-    )
-    return {
-        "exercise_type": exercise_type,
-        "rep_count": rep_count,
-        "session_goal": session_goal,
-        "form_corrections": corrections,
-    }
+_extract_end_summary = extract_end_summary
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
