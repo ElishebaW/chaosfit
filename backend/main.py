@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+# load_dotenv must run before any Langfuse import — the SDK initializes its
+# global singleton on first module import and won't pick up env vars added later.
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 import asyncio
 import base64
 import binascii
@@ -9,27 +15,25 @@ import json
 import logging
 import time
 import warnings
-from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from langfuse import get_client, observe, propagate_attributes
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from starlette.websockets import WebSocketState
 from google.adk.agents.live_request_queue import LiveRequestQueue
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
+from langfuse import Langfuse, get_client, observe, propagate_attributes
+from starlette.websockets import WebSocketState
+
+from backend.coach_agent.agent import agent, coach_prompt
 from backend.live_agent.session_manager import SessionManager
 from backend.reports.report_generator import SessionReportGenerator
 from backend.session_utils import extract_end_summary, normalize_corrections, safe_int, safe_str
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-
-from backend.coach_agent.agent import agent, coach_prompt  # noqa: E402  pylint: disable=wrong-import-position
+_langfuse = Langfuse()
 
 logging.basicConfig(
     level=logging.INFO,
