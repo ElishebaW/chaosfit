@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Trace harness — Phase 1 Group 3.
+Trace harness — Phase 1 Group 3/4.
 
-Drives WebSocket sessions against the running server to generate LangSmith trace data.
-This is NOT a CI test. Run it manually to collect traces.
+Drives WebSocket sessions against the running server to generate Langfuse trace data
+and assert correctness of two key behaviors:
+  1. Session summary is present and complete (exercise_type, rep_count non-null).
+  2. Coach is ready (session_state:active) before sending any model content.
+
+This is NOT a CI test. Run it manually against a running server.
 
 Usage:
     # Against local server (start with: uv run uvicorn backend.main:app --port 8080)
@@ -16,9 +20,9 @@ Usage:
     python test/trace_harness.py --scenario session_with_interruption --runs 3
 
 Scenarios:
-    clean_session           — normal session, 5 frames, one exercise, clean end
+    clean_session             — normal session, 5 frames, one exercise, clean end
     session_with_interruption — pause mid-session, resume, then end
-    misidentified_exercise  — exercise_update claims a different exercise than context implies
+    misidentified_exercise    — exercise_update claims a different exercise than context implies
 """
 from __future__ import annotations
 
@@ -31,7 +35,11 @@ import uuid
 from typing import Any
 
 import websockets
+from dotenv import load_dotenv
 from langfuse import Langfuse, observe
+from pathlib import Path
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 _langfuse = Langfuse()
 
@@ -43,7 +51,6 @@ _FRAME_B64 = (
     "AAAAAAAAAAAAAP/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAA"
     "AAAAAAAP/aAAwDAQACEQMRAD8AJQAB/9k="
 )
-
 
 # ---------------------------------------------------------------------------
 # Scenario drivers — each sends a distinct sequence of WebSocket messages
@@ -118,8 +125,8 @@ async def _scenario_session_with_interruption(ws: Any, _session_id: str) -> None
 
 async def _scenario_misidentified_exercise(ws: Any, _session_id: str) -> None:
     """
-    Exercise mismatch: frames are sent but the exercise_update reports 'lunge'
-    while the prior context implied 'squat'. Surfaces detection inconsistency in traces.
+    Exercise mismatch: frames are sent but exercise_update reports 'lunge'
+    while context implied 'squat'. Surfaces detection inconsistency in traces.
     """
     for _ in range(5):
         await ws.send(json.dumps({
@@ -154,6 +161,158 @@ _SCENARIOS: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
+# Assertions
+# ---------------------------------------------------------------------------
+
+_READY_KEYWORDS = {"ready", "begin", "start", "let's", "go ahead", "whenever you're"}
+_CORRECTION_KEYWORDS = {"keep", "lower", "straighten", "tuck", "chest up", "hips back", "knees", "back straight"}
+
+
+def _extract_adk_text_parts(msg: dict) -> list[str]:
+    """Extract text strings from an ADK LiveServerMessage dict."""
+    server_content = msg.get("serverContent") or msg.get("server_content")
+    if not isinstance(server_content, dict):
+        return []
+    model_turn = server_content.get("modelTurn") or server_content.get("model_turn")
+    if not isinstance(model_turn, dict):
+        return []
+    return [
+        p["text"]
+        for p in model_turn.get("parts", [])
+        if isinstance(p, dict) and p.get("text")
+    ]
+
+
+def _has_model_content(msg: dict) -> bool:
+    server_content = msg.get("serverContent") or msg.get("server_content")
+    if not isinstance(server_content, dict):
+        return False
+    return bool(server_content.get("modelTurn") or server_content.get("model_turn"))
+
+
+def _assert_websocket_events(session_id: str, received: list[dict]) -> list[str]:
+    """
+    Run assertions on received WebSocket events.
+    Returns a list of failure strings (empty = all pass).
+    """
+    failures: list[str] = []
+
+    # --- Assertion 1: session must end cleanly ----------------------------------
+    ended = any(
+        m.get("type") == "session_state" and m.get("status") == "ended"
+        for m in received
+    )
+    if not ended:
+        failures.append(
+            "summary: session_state:ended not received — session timed out or crashed "
+            "before summary was written"
+        )
+
+    # --- Assertion 2: session_state:active before any model content -------------
+    # session_state:active signals the coach is connected and ready.
+    # Model content arriving before this means corrections could fire prematurely.
+    active_index: int | None = None
+    first_content_index: int | None = None
+    for i, msg in enumerate(received):
+        if msg.get("type") == "session_state" and msg.get("status") == "active":
+            if active_index is None:
+                active_index = i
+        if first_content_index is None and _has_model_content(msg):
+            first_content_index = i
+
+    if first_content_index is not None and active_index is None:
+        failures.append(
+            "ready: coach sent model content but session_state:active was never received — "
+            "session setup may have been skipped"
+        )
+    elif (
+        first_content_index is not None
+        and active_index is not None
+        and first_content_index < active_index
+    ):
+        failures.append(
+            f"ready: coach sent model content at event #{first_content_index} before "
+            f"session_state:active at event #{active_index} — premature corrections"
+        )
+
+    # --- Assertion 3: if the model returned text, corrections come after ready --
+    # Native-audio responses carry no text parts, so this check is skipped silently
+    # when the model returns audio only.
+    seen_ready = False
+    for msg in received:
+        for text in _extract_adk_text_parts(msg):
+            text_lower = text.lower()
+            if any(kw in text_lower for kw in _READY_KEYWORDS):
+                seen_ready = True
+            hit = next((kw for kw in _CORRECTION_KEYWORDS if kw in text_lower), None)
+            if hit and not seen_ready:
+                failures.append(
+                    f"ready: coach gave correction '{hit}' in text before a ready/begin "
+                    f"signal: '{text[:80]}'"
+                )
+                break
+
+    return failures
+
+
+def _langfuse_rest(path: str, params: dict | None = None) -> dict:
+    """Call the Langfuse REST API. Langfuse v4 SDK has no query methods — REST is the right path."""
+    import httpx
+    base = os.getenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com").rstrip("/")
+    auth = (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
+    r = httpx.get(f"{base}{path}", params=params or {}, auth=auth, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+async def _check_langfuse_summaries(successful: list[tuple[str, str]]) -> list[str]:
+    """
+    Query Langfuse REST API for session_summary_generation observations and assert completeness.
+
+    successful: list of (scenario, session_id) for runs that completed without WS error.
+    Call after _langfuse.flush() so server traces have time to land.
+    """
+    failures: list[str] = []
+    if not successful:
+        return failures
+
+    if not os.getenv("LANGFUSE_PUBLIC_KEY") or not os.getenv("LANGFUSE_SECRET_KEY"):
+        failures.append("LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set — skipping summary check")
+        return failures
+
+    for scenario, session_id in successful:
+        label = f"[{scenario}/{session_id[:16]}]"
+        try:
+            # Query observations directly by session_id — the @observe spans create
+            # their own top-level traces (separate from ADK OTel traces), so we can't
+            # find them by walking the ADK trace tree.
+            obs = _langfuse_rest(
+                "/api/public/observations",
+                {"sessionId": session_id, "name": "session_summary_generation", "limit": 1},
+            )
+            summary_output: dict | None = None
+            if obs.get("data"):
+                summary_output = obs["data"][0].get("output") or {}
+
+            if summary_output is None:
+                failures.append(
+                    f"{label} summary: no session_summary_generation observation in Langfuse "
+                    "(server may not be flushing — verify LANGFUSE_* env vars on the server process)"
+                )
+                continue
+
+            if not summary_output.get("exercise_type"):
+                failures.append(f"{label} summary: exercise_type is null")
+            rep_count = summary_output.get("rep_count")
+            if rep_count is None or rep_count <= 0:
+                failures.append(f"{label} summary: rep_count is 0 or null")
+        except Exception as exc:
+            failures.append(f"{label} Langfuse REST query failed: {exc}")
+
+    return failures
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -183,20 +342,25 @@ async def _run_scenario(base_url: str, scenario: str, run_index: int) -> dict[st
     except Exception as exc:
         error = str(exc)
 
+    assertion_failures = _assert_websocket_events(session_id, received) if not error else []
+
     return {
         "scenario": scenario,
         "run_index": run_index,
         "session_id": session_id,
         "events_received": len(received),
         "event_types": [m.get("type") for m in received],
+        "received": received,
         "error": error,
+        "assertion_failures": assertion_failures,
     }
 
 
 @observe(name="trace_harness_scenario")
 async def _traced_scenario(base_url: str, scenario: str, run_index: int) -> dict[str, Any]:
-    """Parent LangSmith span — session_id links client run to server-side pipeline traces."""
-    return await _run_scenario(base_url, scenario, run_index)
+    result = await _run_scenario(base_url, scenario, run_index)
+    # Strip received from the observed output to keep traces lean
+    return {k: v for k, v in result.items() if k != "received"}
 
 
 async def main() -> None:
@@ -230,19 +394,41 @@ async def main() -> None:
         results.append(result)
         if result["error"]:
             print(f"FAIL — {result['error'][:80]}")
+        elif result["assertion_failures"]:
+            print(f"ASSERT FAIL — {result['events_received']} events, session={result['session_id']}")
+            for f in result["assertion_failures"]:
+                print(f"    ! {f}")
         else:
             print(f"OK — {result['events_received']} events, session={result['session_id']}")
 
-    passed = sum(1 for r in results if not r["error"])
-    print(f"\n{passed}/{len(results)} runs succeeded.")
-    if passed < len(results):
-        print("\nFailed runs:")
-        for r in results:
-            if r["error"]:
-                print(f"  [{r['scenario']} #{r['run_index']}] {r['error']}")
+    ws_passed = sum(1 for r in results if not r["error"] and not r["assertion_failures"])
+    ws_assert_failed = sum(1 for r in results if not r["error"] and r["assertion_failures"])
+    ws_errored = sum(1 for r in results if r["error"])
+    print(f"\nWebSocket results: {ws_passed} passed  |  {ws_assert_failed} assertion failures  |  {ws_errored} errors")
 
+    # Flush harness traces, then wait for server's BatchSpanProcessor to export.
+    print("\nFlushing Langfuse traces ...", end="  ", flush=True)
     _langfuse.flush()
-    print("\nCheck https://cloud.langfuse.com for traces tagged 'trace_harness_scenario'.")
+    await asyncio.sleep(5)
+    print("done")
+
+    successful = [
+        (r["scenario"], r["session_id"])
+        for r in results
+        if not r["error"]
+    ]
+    print(f"Checking Langfuse summaries for {len(successful)} sessions ...")
+    lf_failures = await _check_langfuse_summaries(successful)
+    if lf_failures:
+        print(f"  {len(lf_failures)} Langfuse assertion(s) failed:")
+        for f in lf_failures:
+            print(f"    ! {f}")
+    else:
+        print(f"  All {len(successful)} session summaries look complete in Langfuse.")
+
+    total_failures = ws_assert_failed + ws_errored + len(lf_failures)
+    print(f"\n{'ALL CHECKS PASSED' if total_failures == 0 else f'{total_failures} check(s) failed — see above'}")
+    print("Check https://us.cloud.langfuse.com for full traces.")
 
 
 if __name__ == "__main__":

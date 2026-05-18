@@ -1,6 +1,13 @@
 """FastAPI app using ADK bidi-demo websocket pattern for ChaosFit live coaching."""
+# ruff: noqa: E402  — load_dotenv must run before any Langfuse/ADK import
 
 from __future__ import annotations
+
+# load_dotenv must run before any Langfuse import — the SDK initializes its
+# global singleton on first module import and won't pick up env vars added later.
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 import asyncio
 import base64
@@ -9,26 +16,51 @@ import json
 import logging
 import time
 import warnings
-from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from langfuse import get_client, observe, propagate_attributes
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from starlette.websockets import WebSocketState
 from google.adk.agents.live_request_queue import LiveRequestQueue
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
+from langfuse import Langfuse, get_client, observe, propagate_attributes
+from opentelemetry import trace as _otel_trace
+from opentelemetry.sdk.trace import SpanProcessor as _SpanProcessor
+from opentelemetry.trace import Status as _OtelStatus, StatusCode as _OtelStatusCode
+from starlette.websockets import WebSocketState
+
+from backend.coach_agent.agent import agent, coach_prompt
 from backend.live_agent.session_manager import SessionManager
 from backend.reports.report_generator import SessionReportGenerator
+from backend.session_utils import extract_end_summary, normalize_corrections, safe_int, safe_str
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from backend.coach_agent.agent import agent, coach_prompt  # noqa: E402  pylint: disable=wrong-import-position
+class _SuppressWebSocketCloseErrorProcessor(_SpanProcessor):
+    """Clears ERROR status on spans where Gemini SDK reported a normal WebSocket close.
+
+    The Gemini live SDK converts ConnectionClosedOK (code 1000) to APIError,
+    which OTel records as ERROR. Sessions that ended via the 'end' event are
+    successful — mark them OK so Langfuse doesn't flag them as failures.
+    """
+    def on_start(self, span, parent_context=None): pass
+    def on_end(self, span) -> None:
+        if (span.status.status_code == _OtelStatusCode.ERROR
+                and span.status.description
+                and "1000 None" in span.status.description):
+            span._status = _OtelStatus(_OtelStatusCode.OK)  # noqa: SLF001
+    def shutdown(self) -> None: pass
+    def force_flush(self, timeout_millis: int = 30000) -> bool: return True
+
+
+# Register BEFORE Langfuse() so this processor runs first in on_end.
+_otel_provider = _otel_trace.get_tracer_provider()
+if hasattr(_otel_provider, "add_span_processor"):
+    _otel_provider.add_span_processor(_SuppressWebSocketCloseErrorProcessor())
+
+_langfuse = Langfuse()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,34 +87,9 @@ def _trace_coach_turn(event_type: str, session_id: str, user_id: str, interrupte
         return {"event_type": event_type, "session_id": session_id, "interrupted": interrupted}
 
 
-def _safe_int(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_str(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text if text else None
-
-
-def _normalize_corrections(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        out: list[str] = []
-        for item in value:
-            entry = _safe_str(item)
-            if entry:
-                out.append(entry)
-        return out
-    single = _safe_str(value)
-    return [single] if single else []
+_safe_int = safe_int
+_safe_str = safe_str
+_normalize_corrections = normalize_corrections
 
 
 async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> None:
@@ -120,22 +127,7 @@ async def _process_coach_tool_event(event: Any, session_id: str, session_manager
         logger.error(f"Failed to process coach tool event: {e}")
 
 
-def _extract_end_summary(payload: dict[str, Any]) -> dict[str, Any]:
-    summary_block = payload.get("summary")
-    if not isinstance(summary_block, dict):
-        summary_block = {}
-    exercise_type = _safe_str(summary_block.get("exercise_type") or payload.get("exercise_type"))
-    rep_count = _safe_int(summary_block.get("rep_count") or payload.get("rep_count"))
-    session_goal = _safe_str(summary_block.get("session_goal") or payload.get("session_goal"))
-    corrections = _normalize_corrections(
-        summary_block.get("form_corrections") or payload.get("form_corrections")
-    )
-    return {
-        "exercise_type": exercise_type,
-        "rep_count": rep_count,
-        "session_goal": session_goal,
-        "form_corrections": corrections,
-    }
+_extract_end_summary = extract_end_summary
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
@@ -390,9 +382,8 @@ async def websocket_endpoint(
                         session_goal=summary_payload["session_goal"] or "coach-guided session",
                     )
                     logging.info("Session summary recorded")
+                    get_client().flush()
 
-                    # Session summary is already written by session_manager.record_session_summary()
-                    # No need for separate async call
                     await send_session_state("ended")
                     live_request_queue.close()
                     return

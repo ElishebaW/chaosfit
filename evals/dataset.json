@@ -1,0 +1,86 @@
+{
+  "version": "1",
+  "description": "Ground-truth eval cases derived from Group 3 trace failures.",
+  "failures_observed": [
+    "session_summary_gaps",
+    "coach_premature_corrections",
+    "session_setup_latency"
+  ],
+  "session_summary_cases": [
+    {
+      "id": "summary_complete_toplevel",
+      "description": "All required fields present at top level — should pass",
+      "input": {
+        "exercise_type": "push_up",
+        "rep_count": 10,
+        "session_goal": "morning workout",
+        "form_corrections": ["keep back straight"]
+      },
+      "expected_pass": true
+    },
+    {
+      "id": "summary_complete_nested",
+      "description": "Fields inside a nested summary block — tests extraction fallback",
+      "input": {
+        "summary": {
+          "exercise_type": "lunge",
+          "rep_count": 8,
+          "form_corrections": ["upright torso"]
+        },
+        "session_goal": "lunch session"
+      },
+      "expected_pass": true
+    },
+    {
+      "id": "summary_null_exercise",
+      "description": "exercise_type absent — observed gap in Group 3 traces",
+      "input": {
+        "rep_count": 10,
+        "session_goal": "morning workout",
+        "form_corrections": []
+      },
+      "expected_pass": false,
+      "failure_pattern": "session_summary_gaps"
+    },
+    {
+      "id": "summary_zero_reps",
+      "description": "rep_count is 0 despite exercise activity — coach timed out before counting",
+      "input": {
+        "exercise_type": "air_squat",
+        "rep_count": 0,
+        "session_goal": "evening session",
+        "form_corrections": ["chest up"]
+      },
+      "expected_pass": false,
+      "failure_pattern": "session_summary_gaps"
+    },
+    {
+      "id": "summary_empty_payload",
+      "description": "end message sent with no meaningful data",
+      "input": {},
+      "expected_pass": false,
+      "failure_pattern": "session_summary_gaps"
+    }
+  ],
+  "setup_latency_cases": [
+    {
+      "id": "latency_acceptable",
+      "description": "session_setup latency well under 500ms threshold",
+      "latency_ms": 140,
+      "expected_pass": true
+    },
+    {
+      "id": "latency_borderline",
+      "description": "session_setup at 220ms — flagged in orange in LangSmith screenshot",
+      "latency_ms": 220,
+      "expected_pass": true
+    },
+    {
+      "id": "latency_timeout",
+      "description": "session_setup exceeded threshold — coach timed out before responding",
+      "latency_ms": 3200,
+      "expected_pass": false,
+      "failure_pattern": "session_setup_latency"
+    }
+  ]
+}
