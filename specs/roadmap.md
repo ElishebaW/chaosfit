@@ -64,9 +64,9 @@ The coaching agent's audio corrections are responding to frames that may be 1–
 
 Once real session traces are collected, use them to identify where the agent drifts or fails:
 
-- [ ] Define eval dataset from trace-observed failures (not pre-assumed)
-- [ ] Write evaluators targeting the specific gaps traces reveal
-- [ ] Run evals in CI on PRs touching agent logic
+- [x] Define eval dataset from trace-observed failures (not pre-assumed)
+- [x] Write evaluators targeting the specific gaps traces reveal
+- [x] Run evals in CI on PRs touching agent logic
 
 ### Coaching Accuracy
 - [ ] Improve exercise detection accuracy (reduce false positives in rep counting)
