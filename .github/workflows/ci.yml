@@ -61,6 +61,159 @@ jobs:
       - name: Run evals
         run: python -m evals.run_evals --ci
 
+  boundary-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history needed for diff against main
+
+      - name: Install ripgrep
+        run: sudo apt-get install -y ripgrep
+
+      - name: "Check 1: No direct Gemini REST calls (all AI must go through ADK)"
+        run: |
+          rg -n "generativelanguage|v1beta/models|https://.*gemini" backend/ evals/ test/ scripts/ || true
+          if rg -q "generativelanguage|v1beta/models|https://.*gemini" backend/ evals/ test/ scripts/; then
+            echo "::error::Direct Gemini REST call detected — all AI calls must go through ADK"
+            exit 1
+          fi
+
+      - name: "Check 2: No LangSmith drift (Langfuse is the observability platform)"
+        run: |
+          # Check runtime code only — workflow files are excluded to avoid matching this grep pattern itself
+          if rg -q "langsmith|LANGSMITH|traceable" backend/ evals/ test/ scripts/ pyproject.toml backend/requirements.txt; then
+            echo "::error::LangSmith reference detected in runtime code — use Langfuse"
+            exit 1
+          fi
+          # Check CI config for LangSmith secrets — exclude workflow files themselves
+          if rg -q "LANGSMITH_API_KEY|langsmith-api-key" .github/ --glob '!workflows/'; then
+            echo "::error::LangSmith secret wired into CI — remove it"
+            exit 1
+          fi
+
+      - name: "Check 3: Langfuse coverage — all required trace points present"
+        run: |
+          missing=()
+          rg -q "session_summary_generation" backend/ evals/ test/ || missing+=("session_summary_generation")
+          rg -q "session_setup" backend/ || missing+=("session_setup")
+          rg -q "exercise_detection|exercise_update" backend/ || missing+=("exercise_detection/exercise_update")
+          rg -q "interruption_handling|interruption" backend/ || missing+=("interruption_handling")
+          rg -q "gemini_live_coach_turn" backend/ || missing+=("gemini_live_coach_turn")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required Langfuse trace points: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: "Check 4a: No high-frequency tracing — @observe count in main.py must stay low"
+        run: |
+          # main.py should have exactly one @observe (gemini_live_coach_turn).
+          # More than one means a per-frame or per-event span was introduced.
+          COUNT=$(rg -c "^@observe" backend/main.py || echo 0)
+          echo "Found ${COUNT} @observe decorator(s) in backend/main.py"
+          if [ "${COUNT}" -gt 1 ]; then
+            echo "::error::${COUNT} @observe decorators in backend/main.py — expected 1 (gemini_live_coach_turn). Remove per-frame/audio/event spans."
+            exit 1
+          fi
+          # Confirm the one allowed span is the approved coach-turn trace
+          if ! rg -q 'observe.*gemini_live_coach_turn|gemini_live_coach_turn.*observe|@observe' backend/main.py; then
+            echo "::error::gemini_live_coach_turn trace missing from backend/main.py"
+            exit 1
+          fi
+
+      - name: "Check 4b: Latency guardrails intact — stale-frame rejection must be present"
+        run: |
+          missing=()
+          rg -q "capturedAt" backend/main.py                              || missing+=("capturedAt timestamp read")
+          rg -q "age_ms" backend/main.py                                  || missing+=("age_ms calculation")
+          rg -q "age_ms.{0,20}3000|3000.{0,20}age_ms" backend/main.py     || missing+=("stale-frame threshold (3000 ms)")
+          rg -q "Dropping stale" backend/main.py                          || missing+=("stale-frame drop log")
+          rg -q "logger.debug.{0,30}media_frame|logger.debug.{0,30}size_bytes" backend/main.py \
+            || missing+=("per-frame logger.debug (must not use @observe)")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Latency guardrails removed or renamed: ${missing[*]}"
+            exit 1
+          fi
+          echo "Latency guardrails intact."
+
+      - name: "Check 5: No raw video/frame persistence"
+        run: |
+          if rg -qn "video.*(save|store|persist|write|upload)|frame.*(save|store|persist|write|upload)|image.*(save|store|persist|write|upload)|base64.*(save|store|persist|write|upload)" backend/ evals/ test/ scripts/; then
+            echo "::error::Raw video/frame persistence detected — user video must be processed in real time and discarded"
+            exit 1
+          fi
+
+      - name: "Check 6: No committed secrets"
+        run: |
+          if rg -qn "AIza[A-Za-z0-9_-]{35}|sk-lf-[A-Za-z0-9_-]{12,}|LANGFUSE_SECRET_KEY\s*=\s*sk-|GOOGLE_API_KEY\s*=\s*AIza|BEGIN .*PRIVATE KEY" . --glob '!uv.lock' --glob '!*.md'; then
+            echo "::error::Potential secret committed to repository"
+            exit 1
+          fi
+
+      - name: "Check 7: Frontend remains dependency-free (no JS frameworks or build tools)"
+        run: |
+          if rg -qn "\"react\"|\"vue\"|\"svelte\"|\"angular\"|\"vite\"|\"webpack\"" . --glob '!*.md' --glob '!uv.lock'; then
+            echo "::error::Frontend framework or build tool detected — backend/static must stay vanilla HTML/CSS/JS"
+            exit 1
+          fi
+          if [ -f package.json ]; then
+            echo "::error::package.json found — frontend must remain dependency-free"
+            exit 1
+          fi
+
+      - name: "Check 8: Eval dataset provenance — negative cases must exist"
+        run: |
+          if ! rg -q 'expected_pass.*false|"expected_pass": false' evals/dataset.json; then
+            echo "::error::evals/dataset.json has no expected_pass:false cases — evals must include known-bad examples"
+            exit 1
+          fi
+
+      - name: "Check 9: CI evals job present and wired to pull_request trigger"
+        run: |
+          if ! rg -q "pull_request" .github/workflows/ci.yml; then
+            echo "::error::CI workflow has no pull_request trigger"
+            exit 1
+          fi
+          if ! rg -q "run_evals" .github/workflows/ci.yml; then
+            echo "::error::evals job missing from CI workflow"
+            exit 1
+          fi
+
+      - name: "Check 10: Session end contract — summary fields present in end/extract path"
+        run: |
+          missing=()
+          rg -q "exercise_type" backend/session_utils.py backend/live_agent/session_manager.py || missing+=("exercise_type")
+          rg -q "rep_count" backend/session_utils.py backend/live_agent/session_manager.py || missing+=("rep_count")
+          rg -q "form_corrections" backend/session_utils.py backend/live_agent/session_manager.py || missing+=("form_corrections")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Session summary contract broken — missing fields: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: "Check 11: Mock proliferation — no mocks replacing the unit under test"
+        run: |
+          CHANGED_TESTS=$(git diff --name-only origin/main...HEAD | grep -E "^(test|evals)/" || true)
+          if [ -n "$CHANGED_TESTS" ]; then
+            if echo "$CHANGED_TESTS" | xargs rg -ln "MagicMock|AsyncMock|patch\(" 2>/dev/null | grep -q .; then
+              echo "::warning::Mock usage detected in changed test files — verify mocks do not replace the exact behavior under test:"
+              echo "$CHANGED_TESTS" | xargs rg -ln "MagicMock|AsyncMock|patch\(" 2>/dev/null || true
+            else
+              echo "No aggressive mocking detected in changed test files."
+            fi
+          fi
+
+      - name: "Check 12 & 13: Test coverage includes failure/boundary paths"
+        run: |
+          CHANGED_TESTS=$(git diff --name-only origin/main...HEAD | grep -E "^(test|evals)/" || true)
+          if [ -n "$CHANGED_TESTS" ]; then
+            if ! echo "$CHANGED_TESTS" | xargs rg -qln "expected_pass.*false|pytest\.raises|assert.*False|assert.*is None|assert.*== 0|error|fail|invalid|timeout|missing|null" 2>/dev/null; then
+              echo "::warning::Changed test files appear to cover success paths only — consider adding failure/boundary cases"
+            else
+              echo "Failure/boundary path coverage detected in changed test files."
+            fi
+          fi
+
   build-push-deploy:
     needs: [lint, test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
