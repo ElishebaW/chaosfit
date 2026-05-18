@@ -36,7 +36,7 @@ from typing import Any
 
 import websockets
 from dotenv import load_dotenv
-from langfuse import Langfuse, get_client, observe
+from langfuse import Langfuse, observe
 from pathlib import Path
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")

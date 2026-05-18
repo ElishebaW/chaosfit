@@ -1,4 +1,5 @@
 """FastAPI app using ADK bidi-demo websocket pattern for ChaosFit live coaching."""
+# ruff: noqa: E402  — load_dotenv must run before any Langfuse/ADK import
 
 from __future__ import annotations
 
