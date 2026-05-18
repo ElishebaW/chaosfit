@@ -255,50 +255,60 @@ def _assert_websocket_events(session_id: str, received: list[dict]) -> list[str]
     return failures
 
 
+def _langfuse_rest(path: str, params: dict | None = None) -> dict:
+    """Call the Langfuse REST API. Langfuse v4 SDK has no query methods — REST is the right path."""
+    import httpx
+    base = os.getenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com").rstrip("/")
+    auth = (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
+    r = httpx.get(f"{base}{path}", params=params or {}, auth=auth, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
 async def _check_langfuse_summaries(successful: list[tuple[str, str]]) -> list[str]:
     """
-    Query Langfuse for session_summary_generation observations and assert completeness.
+    Query Langfuse REST API for session_summary_generation observations and assert completeness.
 
     successful: list of (scenario, session_id) for runs that completed without WS error.
-    Traces take a moment to flush; call after _langfuse.flush().
+    Call after _langfuse.flush() so server traces have time to land.
     """
     failures: list[str] = []
     if not successful:
         return failures
-    try:
-        lf = get_client()
-        for scenario, session_id in successful:
-            label = f"[{scenario}/{session_id[:16]}]"
-            try:
-                # List traces for this session, then find the summary observation.
-                traces = lf.api.trace.list(session_id=session_id, limit=20)
-                summary_output: dict | None = None
-                for trace in (traces.data or []):
-                    obs = lf.api.observations.get_many(
-                        trace_id=trace.id,
-                        name="session_summary_generation",
-                        limit=1,
-                    )
-                    if obs.data:
-                        summary_output = obs.data[0].output or {}
-                        break
 
-                if summary_output is None:
-                    failures.append(
-                        f"{label} summary: no session_summary_generation observation "
-                        "found in Langfuse"
-                    )
-                    continue
+    if not os.getenv("LANGFUSE_PUBLIC_KEY") or not os.getenv("LANGFUSE_SECRET_KEY"):
+        failures.append("LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set — skipping summary check")
+        return failures
 
-                if not summary_output.get("exercise_type"):
-                    failures.append(f"{label} summary: exercise_type is null")
-                rep_count = summary_output.get("rep_count")
-                if rep_count is None or rep_count <= 0:
-                    failures.append(f"{label} summary: rep_count is 0 or null")
-            except Exception as exc:
-                failures.append(f"{label} Langfuse query error: {exc}")
-    except Exception as exc:
-        failures.append(f"Langfuse client init failed: {exc}")
+    for scenario, session_id in successful:
+        label = f"[{scenario}/{session_id[:16]}]"
+        try:
+            traces = _langfuse_rest("/api/public/traces", {"sessionId": session_id, "limit": 20})
+            summary_output: dict | None = None
+            for trace in traces.get("data", []):
+                obs = _langfuse_rest(
+                    "/api/public/observations",
+                    {"traceId": trace["id"], "name": "session_summary_generation", "limit": 1},
+                )
+                if obs.get("data"):
+                    summary_output = obs["data"][0].get("output") or {}
+                    break
+
+            if summary_output is None:
+                failures.append(
+                    f"{label} summary: no session_summary_generation observation in Langfuse "
+                    "(server may not be flushing — verify LANGFUSE_* env vars on the server process)"
+                )
+                continue
+
+            if not summary_output.get("exercise_type"):
+                failures.append(f"{label} summary: exercise_type is null")
+            rep_count = summary_output.get("rep_count")
+            if rep_count is None or rep_count <= 0:
+                failures.append(f"{label} summary: rep_count is 0 or null")
+        except Exception as exc:
+            failures.append(f"{label} Langfuse REST query failed: {exc}")
+
     return failures
 
 
