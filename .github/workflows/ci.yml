@@ -106,15 +106,36 @@ jobs:
             exit 1
           fi
 
-      - name: "Check 4: No high-frequency tracing (no @observe inside per-frame/audio loops)"
+      - name: "Check 4a: No high-frequency tracing — @observe count in main.py must stay low"
         run: |
-          # Flag any @observe call that appears inside a video/audio/frame processing block
-          if rg -n "capturedAt|mimeType|audio/pcm|send_realtime" backend/main.py | rg -q "@observe"; then
-            echo "::error::@observe found inside per-frame or audio loop — use logger.debug for high-frequency events"
+          # main.py should have exactly one @observe (gemini_live_coach_turn).
+          # More than one means a per-frame or per-event span was introduced.
+          COUNT=$(rg -c "^@observe" backend/main.py || echo 0)
+          echo "Found ${COUNT} @observe decorator(s) in backend/main.py"
+          if [ "${COUNT}" -gt 1 ]; then
+            echo "::error::${COUNT} @observe decorators in backend/main.py — expected 1 (gemini_live_coach_turn). Remove per-frame/audio/event spans."
             exit 1
           fi
-          # Also flag if observe is imported AND used in a tight loop context
-          echo "High-frequency trace check passed."
+          # Confirm the one allowed span is the approved coach-turn trace
+          if ! rg -q 'observe.*gemini_live_coach_turn\|gemini_live_coach_turn.*observe\|@observe' backend/main.py; then
+            echo "::error::gemini_live_coach_turn trace missing from backend/main.py"
+            exit 1
+          fi
+
+      - name: "Check 4b: Latency guardrails intact — stale-frame rejection must be present"
+        run: |
+          missing=()
+          rg -q "capturedAt" backend/main.py                              || missing+=("capturedAt timestamp read")
+          rg -q "age_ms" backend/main.py                                  || missing+=("age_ms calculation")
+          rg -q "age_ms.{0,20}3000|3000.{0,20}age_ms" backend/main.py     || missing+=("stale-frame threshold (3000 ms)")
+          rg -q "Dropping stale" backend/main.py                          || missing+=("stale-frame drop log")
+          rg -q "logger.debug.{0,30}media_frame|logger.debug.{0,30}size_bytes" backend/main.py \
+            || missing+=("per-frame logger.debug (must not use @observe)")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Latency guardrails removed or renamed: ${missing[*]}"
+            exit 1
+          fi
+          echo "Latency guardrails intact."
 
       - name: "Check 5: No raw video/frame persistence"
         run: |
