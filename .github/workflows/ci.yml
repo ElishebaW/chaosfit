@@ -98,8 +98,8 @@ jobs:
           missing=()
           rg -q "session_summary_generation" backend/ evals/ test/ || missing+=("session_summary_generation")
           rg -q "session_setup" backend/ || missing+=("session_setup")
-          rg -q "exercise_detection\|exercise_update" backend/ || missing+=("exercise_detection/exercise_update")
-          rg -q "interruption_handling\|interruption" backend/ || missing+=("interruption_handling")
+          rg -q "exercise_detection|exercise_update" backend/ || missing+=("exercise_detection/exercise_update")
+          rg -q "interruption_handling|interruption" backend/ || missing+=("interruption_handling")
           rg -q "gemini_live_coach_turn" backend/ || missing+=("gemini_live_coach_turn")
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required Langfuse trace points: ${missing[*]}"
@@ -117,7 +117,7 @@ jobs:
             exit 1
           fi
           # Confirm the one allowed span is the approved coach-turn trace
-          if ! rg -q 'observe.*gemini_live_coach_turn\|gemini_live_coach_turn.*observe\|@observe' backend/main.py; then
+          if ! rg -q 'observe.*gemini_live_coach_turn|gemini_live_coach_turn.*observe|@observe' backend/main.py; then
             echo "::error::gemini_live_coach_turn trace missing from backend/main.py"
             exit 1
           fi
@@ -164,7 +164,7 @@ jobs:
 
       - name: "Check 8: Eval dataset provenance — negative cases must exist"
         run: |
-          if ! rg -q "expected_pass.*false\|\"expected_pass\": false" evals/dataset.json; then
+          if ! rg -q 'expected_pass.*false|"expected_pass": false' evals/dataset.json; then
             echo "::error::evals/dataset.json has no expected_pass:false cases — evals must include known-bad examples"
             exit 1
           fi
@@ -207,7 +207,7 @@ jobs:
         run: |
           CHANGED_TESTS=$(git diff --name-only origin/main...HEAD | grep -E "^(test|evals)/" || true)
           if [ -n "$CHANGED_TESTS" ]; then
-            if ! echo "$CHANGED_TESTS" | xargs rg -qln "expected_pass.*false\|pytest\.raises\|assert.*False\|assert.*is None\|assert.*== 0\|error\|fail\|invalid\|timeout\|missing\|null" 2>/dev/null; then
+            if ! echo "$CHANGED_TESTS" | xargs rg -qln "expected_pass.*false|pytest\.raises|assert.*False|assert.*is None|assert.*== 0|error|fail|invalid|timeout|missing|null" 2>/dev/null; then
               echo "::warning::Changed test files appear to cover success paths only — consider adding failure/boundary cases"
             else
               echo "Failure/boundary path coverage detected in changed test files."
