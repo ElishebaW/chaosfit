@@ -111,6 +111,8 @@ let hudRepCount = 0;
 let hudTimerSeconds = 0;
 let hudTimerInterval = null;
 let hudTimerRunning = false;
+let sessionStarted = false;  // true once the user starts a session
+let sessionEnded = false;    // true once stopHudSession() has redirected
 
 function setHudSessionStatus(isLive) {
   if (!sessionStatusText) return;
@@ -165,6 +167,8 @@ async function startHudSession() {
     await startVideoStream();
     setHudSessionStatus(true);
     startHudTimer();
+    sessionStarted = true;
+    sessionEnded = false;
 
     if (stopSessionButton) stopSessionButton.style.display = "";
     if (startSessionButton) startSessionButton.style.display = "none";
@@ -193,7 +197,7 @@ async function stopHudSession() {
   }
 
   // Redirect to post-session summary screen.
-  // Session ID is part of the WebSocket URL (/ws/{user_id}/{session_id}) and is available in this module.
+  sessionEnded = true;
   try {
     window.location.href = `/summary?session_id=${encodeURIComponent(sessionId)}`;
   } catch (e) {
@@ -1112,9 +1116,23 @@ function connectWebsocket() {
     if (is_audio || isAudioStarting) {
       void stopAudio(true);
     }
-    addSystemMessage("Connection closed. Reconnecting in 5 seconds...");
 
-    // Log to console
+    // If a session was running and we haven't already redirected, send the user
+    // to the summary page — the server wrote the summary even on unexpected disconnect.
+    if (sessionStarted && !sessionEnded) {
+      sessionEnded = true;
+      addSystemMessage("Session ended. Loading your summary...");
+      addConsoleEntry('error', 'WebSocket Disconnected', {
+        status: 'Session ended unexpectedly — redirecting to summary',
+        sessionId: sessionId,
+      }, '🔌', 'system');
+      setTimeout(function () {
+        window.location.href = `/summary?session_id=${encodeURIComponent(sessionId)}`;
+      }, 800);
+      return;
+    }
+
+    addSystemMessage("Connection closed. Reconnecting in 5 seconds...");
     addConsoleEntry('error', 'WebSocket Disconnected', {
       status: 'Connection closed',
       reconnecting: true,
@@ -1123,13 +1141,10 @@ function connectWebsocket() {
 
     setTimeout(function () {
       console.log("Reconnecting...");
-
-      // Log reconnection attempt to console
       addConsoleEntry('outgoing', 'Reconnecting to ADK server...', {
         userId: userId,
         sessionId: sessionId
       }, '🔄', 'system');
-
       connectWebsocket();
     }, 5000);
   };
