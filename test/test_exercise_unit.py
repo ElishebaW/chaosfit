@@ -129,47 +129,10 @@ def test_exercise_tracking_unit():
     print("\n🎯 Integration Test Complete!")
     print("=" * 50)
     
-    # Verify expectations
-    expected_exercises = ["jumping_jack", "air_squat", "push_up"]
-    actual_exercises = final_state.exercise_history
-    
-    print("\n✅ Verification Results:")
-    print(f"   🏃 Expected exercises: {expected_exercises}")
-    print(f"   🏃 Actual exercises: {actual_exercises}")
-    
-    if set(expected_exercises) == set(actual_exercises):
-        print("   ✅ All exercises properly tracked!")
-        print("   ✅ Exercise history preserves order of exercises")
-    else:
-        missing = set(expected_exercises) - set(actual_exercises)
-        print(f"   ❌ Missing exercises: {missing}")
-    
-    if final_state.cumulative_rep_count == 33:  # 10 + 15 + 8
-        print("   ✅ Rep counting correct!")
-        print("   ✅ Reps accumulate across multiple exercises")
-    else:
-        print(f"   ❌ Rep counting error: expected 33, got {final_state.cumulative_rep_count}")
-    
-    if len(final_state.form_corrections) == 5:  # 2 + 2 + 1
-        print("   ✅ Form corrections tracking correct!")
-        print("   ✅ Corrections accumulate across multiple exercises")
-    else:
-        print(f"   ❌ Form corrections error: expected 5, got {len(final_state.form_corrections)}")
-    
-    # Test summary display expectations
-    print("\n📱 Expected Summary Page Display:")
-    print("   🏃 Exercise: PUSH_UP (last exercise)")
-    print("   🔢 Reps: 33 (cumulative total from ALL exercises)")
-    print("   ⚠️  Corrections: 5 (total from all exercises)")
-    print("   📝 Form Corrections Text: ['keep back straight', 'land softly', 'lower hips more', 'keep chest up', 'full extension', 'controlled descent']")
-    print("   ✅ Form corrections show as TEXT not timestamps")
-    
-    return True
+    assert set(final_state.exercise_history) == {"jumping_jack", "air_squat", "push_up"}
+    assert final_state.cumulative_rep_count == 33, f"expected 33 reps, got {final_state.cumulative_rep_count}"
+    assert len(final_state.form_corrections) == 6, f"expected 6 corrections, got {len(final_state.form_corrections)}"  # 2 + 2 + 2
 
 
 if __name__ == "__main__":
-    success = test_exercise_tracking_unit()
-    if success:
-        print("\n🎉 ALL TESTS PASSED! Exercise tracking works correctly!")
-    else:
-        print("\n❌ Some tests failed!")
+    test_exercise_tracking_unit()
