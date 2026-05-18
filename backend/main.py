@@ -26,12 +26,38 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from langfuse import Langfuse, get_client, observe, propagate_attributes
+from opentelemetry import trace as _otel_trace
+from opentelemetry.sdk.trace import SpanProcessor as _SpanProcessor
+from opentelemetry.trace import Status as _OtelStatus, StatusCode as _OtelStatusCode
 from starlette.websockets import WebSocketState
 
 from backend.coach_agent.agent import agent, coach_prompt
 from backend.live_agent.session_manager import SessionManager
 from backend.reports.report_generator import SessionReportGenerator
 from backend.session_utils import extract_end_summary, normalize_corrections, safe_int, safe_str
+
+
+class _SuppressWebSocketCloseErrorProcessor(_SpanProcessor):
+    """Clears ERROR status on spans where Gemini SDK reported a normal WebSocket close.
+
+    The Gemini live SDK converts ConnectionClosedOK (code 1000) to APIError,
+    which OTel records as ERROR. Sessions that ended via the 'end' event are
+    successful — mark them OK so Langfuse doesn't flag them as failures.
+    """
+    def on_start(self, span, parent_context=None): pass
+    def on_end(self, span) -> None:
+        if (span.status.status_code == _OtelStatusCode.ERROR
+                and span.status.description
+                and "1000 None" in span.status.description):
+            span._status = _OtelStatus(_OtelStatusCode.OK)  # noqa: SLF001
+    def shutdown(self) -> None: pass
+    def force_flush(self, timeout_millis: int = 30000) -> bool: return True
+
+
+# Register BEFORE Langfuse() so this processor runs first in on_end.
+_otel_provider = _otel_trace.get_tracer_provider()
+if hasattr(_otel_provider, "add_span_processor"):
+    _otel_provider.add_span_processor(_SuppressWebSocketCloseErrorProcessor())
 
 _langfuse = Langfuse()
 
@@ -355,9 +381,8 @@ async def websocket_endpoint(
                         session_goal=summary_payload["session_goal"] or "coach-guided session",
                     )
                     logging.info("Session summary recorded")
+                    get_client().flush()
 
-                    # Session summary is already written by session_manager.record_session_summary()
-                    # No need for separate async call
                     await send_session_state("ended")
                     live_request_queue.close()
                     return

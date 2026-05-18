@@ -283,16 +283,16 @@ async def _check_langfuse_summaries(successful: list[tuple[str, str]]) -> list[s
     for scenario, session_id in successful:
         label = f"[{scenario}/{session_id[:16]}]"
         try:
-            traces = _langfuse_rest("/api/public/traces", {"sessionId": session_id, "limit": 20})
+            # Query observations directly by session_id — the @observe spans create
+            # their own top-level traces (separate from ADK OTel traces), so we can't
+            # find them by walking the ADK trace tree.
+            obs = _langfuse_rest(
+                "/api/public/observations",
+                {"sessionId": session_id, "name": "session_summary_generation", "limit": 1},
+            )
             summary_output: dict | None = None
-            for trace in traces.get("data", []):
-                obs = _langfuse_rest(
-                    "/api/public/observations",
-                    {"traceId": trace["id"], "name": "session_summary_generation", "limit": 1},
-                )
-                if obs.get("data"):
-                    summary_output = obs["data"][0].get("output") or {}
-                    break
+            if obs.get("data"):
+                summary_output = obs["data"][0].get("output") or {}
 
             if summary_output is None:
                 failures.append(
@@ -406,9 +406,10 @@ async def main() -> None:
     ws_errored = sum(1 for r in results if r["error"])
     print(f"\nWebSocket results: {ws_passed} passed  |  {ws_assert_failed} assertion failures  |  {ws_errored} errors")
 
-    # Flush traces before querying Langfuse for summary checks
+    # Flush harness traces, then wait for server's BatchSpanProcessor to export.
     print("\nFlushing Langfuse traces ...", end="  ", flush=True)
     _langfuse.flush()
+    await asyncio.sleep(5)
     print("done")
 
     successful = [
