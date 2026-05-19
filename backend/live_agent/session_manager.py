@@ -310,17 +310,20 @@ class SessionManager:
         user_id: str,
         exercise_type: str | None = None,
         rep_count: int | None = None,
+        coach_interruption_count: int = 0,
         form_corrections: list[str] | None = None,
         session_goal: str | None = None,
     ) -> None:
         try:
             state = self.get(session_id)
             session_goal = session_goal or os.getenv("COACH_SESSION_GOAL")
-            
+
             # Use accumulated state data as primary source, fallback to provided parameters
             final_exercise_type = exercise_type or state.current_exercise
             final_rep_count = rep_count if rep_count is not None else state.cumulative_rep_count
-            final_interruption_count = state.pause_count
+            # coach_interruption_count = ADK event.interrupted count (model speech cut off)
+            # pause_count = user-initiated pauses — tracked separately on state
+            final_interruption_count = coach_interruption_count
             final_form_corrections = form_corrections if form_corrections else state.form_corrections
             
             # Validate state before creating summary

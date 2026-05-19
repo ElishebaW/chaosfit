@@ -146,16 +146,21 @@ def eval_correction_specificity(
 
 def eval_interruption_integrity(
     case_id: str,
-    pause_count: int,
+    adk_interruption_count: int,
     interruption_count: int,
     expected_pass: bool,
 ) -> EvalResult:
-    """Score whether interruption_count in the session summary matches actual pause_count."""
-    score = 1.0 if interruption_count == pause_count else 0.0
+    """
+    Score whether interruption_count matches the number of ADK coach interruptions.
+
+    interruption_count = ADK event.interrupted count (model speech cut off mid-turn).
+    pause_count is a separate summary field for user-initiated pauses — not checked here.
+    """
+    score = 1.0 if interruption_count == adk_interruption_count else 0.0
     reason = (
-        f"interruption_count={interruption_count} matches pause_count={pause_count}"
+        f"interruption_count={interruption_count} matches adk_interruption_count={adk_interruption_count}"
         if score == 1.0
-        else f"interruption_count={interruption_count} != pause_count={pause_count} (F-1 bug)"
+        else f"interruption_count={interruption_count} != adk_interruption_count={adk_interruption_count} (inflated — F-1 pattern)"
     )
     return EvalResult(
         case_id=case_id,

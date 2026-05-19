@@ -86,7 +86,7 @@ def main(ci_mode: bool) -> int:
     print("\n=== Interruption Integrity Evals ===")
     for case in dataset["interruption_integrity_cases"]:
         result = eval_interruption_integrity(
-            case["id"], case["pause_count"], case["interruption_count"], case["expected_pass"]
+            case["id"], case["adk_interruption_count"], case["interruption_count"], case["expected_pass"]
         )
         results.append(result)
         status = "PASS" if result.passed else "FAIL"

@@ -175,34 +175,35 @@
       "expected_pass": true
     }
   ],
+  "interruption_integrity_cases_note": "interruption_count = ADK coach interruptions (event.interrupted). pause_count is a separate field. These cases verify interruption_count is not inflated by form corrections (F-1 bug).",
   "interruption_integrity_cases": [
     {
-      "id": "interruption_zero_pauses_zero_count",
-      "description": "No pauses and interruption_count=0 — correct",
-      "pause_count": 0,
+      "id": "interruption_zero_adk_zero_count",
+      "description": "No ADK interruptions, interruption_count=0 — correct",
+      "adk_interruption_count": 0,
       "interruption_count": 0,
       "expected_pass": true
     },
     {
-      "id": "interruption_one_pause_one_count",
-      "description": "One pause and interruption_count=1 — correct",
-      "pause_count": 1,
+      "id": "interruption_one_adk_one_count",
+      "description": "One ADK interruption, interruption_count=1 — correct",
+      "adk_interruption_count": 1,
       "interruption_count": 1,
       "expected_pass": true
     },
     {
-      "id": "interruption_count_from_corrections",
-      "description": "F-1 bug: zero pauses but interruption_count=2 (from 2 form corrections)",
-      "pause_count": 0,
+      "id": "interruption_count_inflated_by_corrections",
+      "description": "F-1 bug pattern: 0 ADK interruptions but interruption_count=2 (from form corrections)",
+      "adk_interruption_count": 0,
       "interruption_count": 2,
       "expected_pass": false,
       "failure_pattern": "interruption_count_conflated_with_corrections"
     },
     {
-      "id": "interruption_pause_not_counted",
-      "description": "F-1 bug: one real pause but interruption_count=0 (not incremented on pause)",
-      "pause_count": 1,
-      "interruption_count": 0,
+      "id": "interruption_count_inflated_multi",
+      "description": "F-1 bug pattern: 1 ADK interruption but interruption_count=4 (inflated by corrections)",
+      "adk_interruption_count": 1,
+      "interruption_count": 4,
       "expected_pass": false,
       "failure_pattern": "interruption_count_conflated_with_corrections"
     }
