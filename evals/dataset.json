@@ -86,6 +86,7 @@
       "failure_pattern": "session_setup_latency"
     }
   ],
+  "rep_count_accuracy_cases_note": "These are evaluator unit tests (static actual/expected pairs). They verify the ±1 tolerance logic, not AI counting accuracy. Real model rep-count accuracy requires a harness that sends real video and captures model output — see F-4 in failure_taxonomy.md.",
   "rep_count_accuracy_cases": [
     {
       "id": "rep_count_exact",

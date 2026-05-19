@@ -69,7 +69,7 @@ def main(ci_mode: bool) -> int:
         status = "PASS" if result.passed else "FAIL"
         print(f"  [{status}] {result.case_id}: {result.reason}")
 
-    print("\n=== Rep Count Accuracy Evals ===")
+    print("\n=== Rep Count Accuracy Evals (evaluator unit tests — not AI accuracy) ===")
     for case in dataset["rep_count_accuracy_cases"]:
         result = eval_rep_count_accuracy(case["id"], case["actual"], case["expected"], case["expected_pass"])
         results.append(result)
