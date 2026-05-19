@@ -5,7 +5,7 @@ Each group is a shippable unit. Complete in order.
 ## Group 1 — Failure taxonomy from traces
 1. Pull recent session traces from Langfuse (REST API or `langfuse-cli`) filtering on `exercise_detection` and `session_summary_generation` observations
 2. Categorize failures: mislabeled exercise type, wrong rep count, double-counted reps, generic/mistimed corrections
-3. Build eval dataset in `evals/datasets/coaching_accuracy.json` from 10–20 representative failure cases
+3. Build eval dataset in `evals/dataset.json` from 10–20 representative failure cases
 4. Document the failure taxonomy in a short note — drives prompt changes in Group 2
 
 ## Group 2 — Prompt tuning: rep counting & form feedback

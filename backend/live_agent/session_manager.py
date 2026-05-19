@@ -310,7 +310,6 @@ class SessionManager:
         user_id: str,
         exercise_type: str | None = None,
         rep_count: int | None = None,
-        interruption_count: int = 0,
         form_corrections: list[str] | None = None,
         session_goal: str | None = None,
     ) -> None:

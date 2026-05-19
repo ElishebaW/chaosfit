@@ -4,7 +4,7 @@
 CI evals are green, rep counting is accurate within ±1 on a standard push-up and squat set, and form feedback quality is verified via Langfuse trace review.
 
 ## Checklist
-- [ ] Failure taxonomy documented — at least 10 labeled failure cases in `evals/datasets/coaching_accuracy.json`
+- [ ] Failure taxonomy documented — at least 10 labeled failure cases in `evals/dataset.json`
 - [ ] Rep count evaluator passes in CI: count within ±1 for a 10-rep push-up set and a 10-rep squat set
 - [ ] Form feedback evaluator passes in CI: no generic corrections ("good job", "keep going") in traces; every correction names a body part or joint
 - [ ] Correction timing: coach corrections fire after the triggering movement frame, not before (verified via trace timestamps)
