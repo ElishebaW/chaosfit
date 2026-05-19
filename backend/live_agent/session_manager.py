@@ -235,9 +235,6 @@ class SessionManager:
                 if correction_str and correction_str not in state.form_corrections:
                     state.form_corrections.append(correction_str)
                     new_correction_count += 1
-                    state.coach_interruptions += 1
-                    state.total_interruptions += 1
-                    logging.debug(f"Form correction interruption (total: {state.total_interruptions})")
             if new_correction_count:
                 logging.debug(f"Added {new_correction_count} form corrections")
 
@@ -324,7 +321,7 @@ class SessionManager:
             # Use accumulated state data as primary source, fallback to provided parameters
             final_exercise_type = exercise_type or state.current_exercise
             final_rep_count = rep_count if rep_count is not None else state.cumulative_rep_count
-            final_interruption_count = interruption_count if interruption_count > 0 else state.total_interruptions
+            final_interruption_count = interruption_count if interruption_count > 0 else state.pause_count
             final_form_corrections = form_corrections if form_corrections else state.form_corrections
             
             # Validate state before creating summary

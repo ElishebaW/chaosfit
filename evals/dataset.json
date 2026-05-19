@@ -1,10 +1,13 @@
 {
-  "version": "1",
-  "description": "Ground-truth eval cases derived from Group 3 trace failures.",
+  "version": "2",
+  "description": "Ground-truth eval cases. v1: trace-harness failures (Group 3). v2: coaching accuracy cases (Group 1 taxonomy).",
   "failures_observed": [
     "session_summary_gaps",
     "coach_premature_corrections",
-    "session_setup_latency"
+    "session_setup_latency",
+    "interruption_count_conflated_with_corrections",
+    "pause_time_not_tracked",
+    "correction_too_generic"
   ],
   "session_summary_cases": [
     {
@@ -81,6 +84,126 @@
       "latency_ms": 3200,
       "expected_pass": false,
       "failure_pattern": "session_setup_latency"
+    }
+  ],
+  "rep_count_accuracy_cases": [
+    {
+      "id": "rep_count_exact",
+      "description": "Counted reps match expected exactly",
+      "actual": 10,
+      "expected": 10,
+      "expected_pass": true
+    },
+    {
+      "id": "rep_count_within_tolerance_under",
+      "description": "One rep short — within ±1 tolerance",
+      "actual": 9,
+      "expected": 10,
+      "expected_pass": true
+    },
+    {
+      "id": "rep_count_within_tolerance_over",
+      "description": "One rep over — within ±1 tolerance",
+      "actual": 11,
+      "expected": 10,
+      "expected_pass": true
+    },
+    {
+      "id": "rep_count_double_counted",
+      "description": "Rep double-counted — F-4 pattern; 2 over tolerance",
+      "actual": 12,
+      "expected": 10,
+      "expected_pass": false,
+      "failure_pattern": "rep_count_error"
+    },
+    {
+      "id": "rep_count_zero",
+      "description": "No reps recorded despite session with exercise activity",
+      "actual": 0,
+      "expected": 10,
+      "expected_pass": false,
+      "failure_pattern": "rep_count_error"
+    },
+    {
+      "id": "rep_count_large_undershoot",
+      "description": "Coach missed most reps — more than ±1 under",
+      "actual": 5,
+      "expected": 10,
+      "expected_pass": false,
+      "failure_pattern": "rep_count_error"
+    }
+  ],
+  "correction_specificity_cases": [
+    {
+      "id": "correction_specific_body_part",
+      "description": "Correction names a specific body part and action — should pass",
+      "corrections": ["keep your knees over your toes", "lower your hips below parallel"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_specific_joint_angle",
+      "description": "Correction references joint angle — should pass",
+      "corrections": ["bend your elbows to 90 degrees at the bottom", "keep your back flat"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_generic_encouragement",
+      "description": "Generic encouragement only — no actionable body-part cue (F-3 pattern)",
+      "corrections": ["good job", "keep it up"],
+      "expected_pass": false,
+      "failure_pattern": "correction_too_generic"
+    },
+    {
+      "id": "correction_mixed_generic_and_specific",
+      "description": "Mix of generic and specific — fails because at least one is generic",
+      "corrections": ["great form", "tuck your chin"],
+      "expected_pass": false,
+      "failure_pattern": "correction_too_generic"
+    },
+    {
+      "id": "correction_single_generic",
+      "description": "Single generic phrase — most common observed failure mode",
+      "corrections": ["keep going"],
+      "expected_pass": false,
+      "failure_pattern": "correction_too_generic"
+    },
+    {
+      "id": "correction_empty_list",
+      "description": "No corrections — valid for a clean session with good form",
+      "corrections": [],
+      "expected_pass": true
+    }
+  ],
+  "interruption_integrity_cases": [
+    {
+      "id": "interruption_zero_pauses_zero_count",
+      "description": "No pauses and interruption_count=0 — correct",
+      "pause_count": 0,
+      "interruption_count": 0,
+      "expected_pass": true
+    },
+    {
+      "id": "interruption_one_pause_one_count",
+      "description": "One pause and interruption_count=1 — correct",
+      "pause_count": 1,
+      "interruption_count": 1,
+      "expected_pass": true
+    },
+    {
+      "id": "interruption_count_from_corrections",
+      "description": "F-1 bug: zero pauses but interruption_count=2 (from 2 form corrections)",
+      "pause_count": 0,
+      "interruption_count": 2,
+      "expected_pass": false,
+      "failure_pattern": "interruption_count_conflated_with_corrections"
+    },
+    {
+      "id": "interruption_pause_not_counted",
+      "description": "F-1 bug: one real pause but interruption_count=0 (not incremented on pause)",
+      "pause_count": 1,
+      "interruption_count": 0,
+      "expected_pass": false,
+      "failure_pattern": "interruption_count_conflated_with_corrections"
     }
   ]
 }

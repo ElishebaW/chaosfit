@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Eval runner — Phase 1 Group 4.
+Eval runner — Phase 1.
 
 Runs evaluators against dataset.json ground-truth cases. When Langfuse credentials
 are present, posts scores back to the Langfuse dashboard for human review.
@@ -17,7 +17,14 @@ import sys
 from pathlib import Path
 
 from backend.session_utils import extract_end_summary
-from evals.evaluators import EvalResult, eval_setup_latency, eval_summary_completeness
+from evals.evaluators import (
+    EvalResult,
+    eval_correction_specificity,
+    eval_interruption_integrity,
+    eval_rep_count_accuracy,
+    eval_setup_latency,
+    eval_summary_completeness,
+)
 
 
 def _load_dataset() -> dict:
@@ -58,6 +65,29 @@ def main(ci_mode: bool) -> int:
     print("\n=== Setup Latency Evals ===")
     for case in dataset["setup_latency_cases"]:
         result = eval_setup_latency(case["id"], case["latency_ms"], case["expected_pass"])
+        results.append(result)
+        status = "PASS" if result.passed else "FAIL"
+        print(f"  [{status}] {result.case_id}: {result.reason}")
+
+    print("\n=== Rep Count Accuracy Evals ===")
+    for case in dataset["rep_count_accuracy_cases"]:
+        result = eval_rep_count_accuracy(case["id"], case["actual"], case["expected"], case["expected_pass"])
+        results.append(result)
+        status = "PASS" if result.passed else "FAIL"
+        print(f"  [{status}] {result.case_id}: {result.reason}")
+
+    print("\n=== Correction Specificity Evals ===")
+    for case in dataset["correction_specificity_cases"]:
+        result = eval_correction_specificity(case["id"], case["corrections"], case["expected_pass"])
+        results.append(result)
+        status = "PASS" if result.passed else "FAIL"
+        print(f"  [{status}] {result.case_id}: {result.reason}")
+
+    print("\n=== Interruption Integrity Evals ===")
+    for case in dataset["interruption_integrity_cases"]:
+        result = eval_interruption_integrity(
+            case["id"], case["pause_count"], case["interruption_count"], case["expected_pass"]
+        )
         results.append(result)
         status = "PASS" if result.passed else "FAIL"
         print(f"  [{status}] {result.case_id}: {result.reason}")
