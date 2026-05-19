@@ -23,13 +23,17 @@ Pattern: `interruption_count == correction_count` always. Actual pause count is 
 which is incremented by every form correction in `_process_exercise_update`
 (`session_manager.py:238-239`), not by pause/resume events.
 
-**Root cause:** `session_manager.py:238-239` increments `state.total_interruptions` inside the
-form-correction loop. Pause events correctly increment `state.pause_count` but never touch
-`total_interruptions`.
+**Root cause:** `session_manager.py:238-239` incremented `state.total_interruptions` inside the
+form-correction loop. The summary then used `state.total_interruptions` as `interruption_count`,
+making it equal to the correction count rather than anything session-interruption-related.
 
-**Fix:** Remove the `total_interruptions` increment from the correction loop. Add a dedicated
-`coach_correction_count` counter if needed, and use `state.pause_count` as the canonical
-interruption count in the summary.
+**Fix (implemented):**
+- Removed `state.total_interruptions` increment from the form-correction loop
+- Renamed the summary parameter to `coach_interruption_count` — now takes the ADK
+  `event.interrupted` count from `main.py` (times the model's speech was cut off mid-turn)
+- `pause_count` remains a separate dedicated field for user-initiated pauses
+- `interruption_count` in the session summary now correctly equals the number of ADK
+  coach interruptions, which is independent of both form corrections and user pauses
 
 ---
 
