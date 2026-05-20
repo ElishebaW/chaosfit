@@ -139,10 +139,7 @@ class SessionManager:
         )
         self._mem[session_id] = state
         _trace_session_setup(session_id, parent_id, time_remaining_sec, live_model)
-        try:
-            self._upsert_session_doc(state)
-        except Exception:
-            self._firestore = None
+        self._upsert_session_doc(state)
         return state
 
     def get(self, session_id: str) -> SessionState:
@@ -196,8 +193,6 @@ class SessionManager:
             logging.info(f"Event written to Firestore: {event_type} for session {session_id}")
         except Exception as e:
             logging.error(f"Failed to write event to Firestore: {e}")
-            # Fail-open in local/dev environments where Firestore is not enabled.
-            self._firestore = None
     
     def _process_exercise_update(self, state: SessionState, payload: dict[str, Any]) -> None:
         """Process exercise update events with structured data."""
@@ -525,8 +520,6 @@ class SessionManager:
             logging.info(f"Session document upserted: {state.session_id}")
         except Exception as e:
             logging.error(f"Failed to upsert session document: {e}")
-            # Fail-open if API is disabled or credentials are not configured.
-            self._firestore = None
 
     def _write_summary(self, summary: SessionSummary) -> None:
         if not self._firestore:
@@ -536,7 +529,6 @@ class SessionManager:
             logging.info(f"Session summary written: {summary.session_id}")
         except Exception as e:
             logging.error(f"Failed to write session summary: {e}")
-            self._firestore = None
 
 
 def _as_float(value: Any) -> float | None:
