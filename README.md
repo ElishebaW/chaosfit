@@ -233,7 +233,7 @@ The backend also injects the routine plan into the coach context so the coach ca
   "user_id": "demo-user",
   "exercise_type": "air_squat",
   "rep_count": 15,
-  "interruption_count": 2,
+  "user_speech_interruptions": 2,
   "form_corrections": [
     "Keep your chest up — you're rounding forward at the bottom.",
     "Drive your knees out, they're caving in on the way up."
