@@ -189,7 +189,7 @@ async def send_test_end_event(session_id: str):
             user_id="demo-user",
             exercise_type="push_ups",
             rep_count=25,
-            coach_interruption_count=0,
+            user_speech_interruptions=0,
             form_corrections=["keep back straight", "lower chest more"],
             session_goal="improve push-up form"
         )
@@ -287,7 +287,7 @@ async def websocket_endpoint(
                                 user_id=user_id,
                                 exercise_type=state.current_exercise or "unknown",
                                 rep_count=state.cumulative_rep_count,
-                                coach_interruption_count=user_speech_interruptions,
+                                user_speech_interruptions=user_speech_interruptions,
                                 form_corrections=state.form_corrections,
                                 session_goal="session disconnected"
                             )
@@ -375,7 +375,7 @@ async def websocket_endpoint(
                         user_id=user_id,
                         exercise_type=state.current_exercise or summary_payload["exercise_type"],
                         rep_count=state.cumulative_rep_count if state.cumulative_rep_count > 0 else summary_payload["rep_count"],
-                        coach_interruption_count=user_speech_interruptions,
+                        user_speech_interruptions=user_speech_interruptions,
                         form_corrections=state.form_corrections if state.form_corrections else summary_payload["form_corrections"],
                         session_goal=summary_payload["session_goal"] or "coach-guided session",
                     )
@@ -505,7 +505,7 @@ async def websocket_endpoint(
                         user_id=user_id,
                         exercise_type=state.current_exercise or "unknown",
                         rep_count=state.cumulative_rep_count,
-                        coach_interruption_count=user_speech_interruptions,
+                        user_speech_interruptions=user_speech_interruptions,
                         form_corrections=state.form_corrections,
                         session_goal="session terminated unexpectedly"
                     )
