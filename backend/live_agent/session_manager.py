@@ -54,9 +54,17 @@ def _trace_interruption(session_id: str, event_type: str, reason: str | None, pa
 
 
 @observe(name="session_summary_generation")
-def _trace_session_summary(session_id: str, exercise_type: str | None, rep_count: int | None, interruption_count: int, correction_count: int, pause_count: int, total_pause_time_seconds: float) -> dict[str, Any]:
+def _trace_session_summary(session_id: str, exercise_type: str | None, rep_count: int | None, user_speech_interruptions: int, correction_count: int, pause_count: int, total_pause_time_seconds: float) -> dict[str, Any]:
     with propagate_attributes(session_id=session_id):
-        return {"session_id": session_id, "exercise_type": exercise_type, "rep_count": rep_count, "interruption_count": interruption_count, "correction_count": correction_count, "pause_count": pause_count, "total_pause_time_seconds": total_pause_time_seconds}
+        return {
+            "session_id": session_id,
+            "exercise_type": exercise_type,
+            "rep_count": rep_count,
+            "user_speech_interruptions": user_speech_interruptions,  # times user spoke while coach was mid-sentence
+            "pause_count": pause_count,                               # user-initiated workout pauses
+            "correction_count": correction_count,
+            "total_pause_time_seconds": total_pause_time_seconds,
+        }
 
 
 @dataclass
@@ -310,7 +318,7 @@ class SessionManager:
         user_id: str,
         exercise_type: str | None = None,
         rep_count: int | None = None,
-        coach_interruption_count: int = 0,
+        user_speech_interruptions: int = 0,
         form_corrections: list[str] | None = None,
         session_goal: str | None = None,
     ) -> None:
@@ -321,9 +329,9 @@ class SessionManager:
             # Use accumulated state data as primary source, fallback to provided parameters
             final_exercise_type = exercise_type or state.current_exercise
             final_rep_count = rep_count if rep_count is not None else state.cumulative_rep_count
-            # coach_interruption_count = ADK event.interrupted count (model speech cut off)
-            # pause_count = user-initiated pauses — tracked separately on state
-            final_interruption_count = coach_interruption_count
+            # user_speech_interruptions = times the user spoke while the coach was mid-sentence
+            # (ADK event.interrupted). pause_count = user-initiated workout pauses — separate field.
+            final_user_speech_interruptions = user_speech_interruptions
             final_form_corrections = form_corrections if form_corrections else state.form_corrections
             
             # Validate state before creating summary
@@ -340,7 +348,7 @@ class SessionManager:
                 ended_at=state.ended_at or utc_now_iso(),
                 exercise_type=final_exercise_type,
                 rep_count=final_rep_count,
-                interruption_count=final_interruption_count,
+                user_speech_interruptions=final_user_speech_interruptions,
                 form_corrections=tuple(final_form_corrections),
                 session_goal=session_goal,
                 pause_count=state.pause_count,
@@ -351,7 +359,7 @@ class SessionManager:
             logging.info(f"Creating session summary for {session_id}: "
                         f"exercise={final_exercise_type}, "
                         f"reps={final_rep_count}, "
-                        f"interruptions={final_interruption_count}, "
+                        f"interruptions={final_user_speech_interruptions}, "
                         f"corrections={len(final_form_corrections)}, "
                         f"pauses={state.pause_count}, "
                         f"total_pause_time={state.total_pause_time_seconds}s")
@@ -360,7 +368,7 @@ class SessionManager:
                 session_id,
                 final_exercise_type,
                 final_rep_count,
-                final_interruption_count,
+                final_user_speech_interruptions,
                 len(final_form_corrections),
                 state.pause_count,
                 state.total_pause_time_seconds,

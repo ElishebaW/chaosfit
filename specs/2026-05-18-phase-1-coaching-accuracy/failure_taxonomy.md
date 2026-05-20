@@ -29,11 +29,12 @@ making it equal to the correction count rather than anything session-interruptio
 
 **Fix (implemented):**
 - Removed `state.total_interruptions` increment from the form-correction loop
-- Renamed the summary parameter to `coach_interruption_count` — now takes the ADK
-  `event.interrupted` count from `main.py` (times the model's speech was cut off mid-turn)
-- `pause_count` remains a separate dedicated field for user-initiated pauses
-- `interruption_count` in the session summary now correctly equals the number of ADK
-  coach interruptions, which is independent of both form corrections and user pauses
+- Renamed all variables to `user_speech_interruptions` — the user spoke while the coach
+  was mid-sentence, cutting off the coach's audio turn (`ADK event.interrupted = True`)
+- `pause_count` remains a separate dedicated field for user-initiated workout pauses
+- `user_speech_interruptions` is sent to Langfuse as part of the `session_summary_generation`
+  span output, and written to Firestore in `SessionSummary`; old Firestore docs with
+  `interruption_count` are read via backward-compat fallback in `schema.py`
 
 ---
 
