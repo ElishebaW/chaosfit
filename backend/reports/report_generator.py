@@ -63,7 +63,7 @@ class SessionReportGenerator:
         exercise_focus = summary.exercise_type or "general coaching"
         reps_text = str(summary.rep_count) if summary.rep_count is not None else "TBD"
         lines.append(f"Exercise focus: {exercise_focus}. Reps logged: {reps_text}.")
-        lines.append(f"Interruptions captured: {summary.interruption_count}.")
+        lines.append(f"Interruptions captured: {summary.user_speech_interruptions}.")
         if summary.session_goal:
             lines.append(f"Session goal: {summary.session_goal}.")
         if summary.form_corrections:
@@ -99,7 +99,7 @@ class SessionReportGenerator:
         model = os.getenv("SUMMARY_MODEL", "gemini-2.5-flash")
         exercise = summary.exercise_type or "workout"
         rep_count = summary.rep_count if summary.rep_count is not None else 0
-        interruptions = summary.interruption_count
+        interruptions = summary.user_speech_interruptions
         corrections = list(summary.form_corrections or ())
         goal = summary.session_goal or ""
 
@@ -126,7 +126,7 @@ class SessionReportGenerator:
                 f"- exercise_type: {exercise}\n"
                 f"- rep_count: {rep_count}\n"
                 f"- form_corrections: {corrections}\n"
-                f"- interruption_count: {interruptions}\n"
+                f"- user_speech_interruptions: {interruptions}\n"
                 f"- duration: {duration_text}\n"
                 f"- session_goal: {goal}\n"
             )
@@ -175,7 +175,7 @@ class SessionReportGenerator:
             "rep_count": summary.rep_count,
             "exercise_type": summary.exercise_type,
             "form_corrections": list(summary.form_corrections),
-            "interruption_count": summary.interruption_count,
+            "user_speech_interruptions": summary.user_speech_interruptions,
             "session_duration_sec": duration_sec,
             "started_at": summary.started_at,
             "ended_at": summary.ended_at,

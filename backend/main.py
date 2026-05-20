@@ -119,10 +119,8 @@ async def _process_coach_tool_event(event: Any, session_id: str, session_manager
                     if tool_session_id and tool_session_id != session_id:
                         logger.warning(f"Session ID mismatch - tool: {tool_session_id}, actual: {session_id} - corrected")
                     
-                    # Update interruption count if this was an interruption
                     if event_data.get("interruption"):
-                        # This will be handled by the existing interrupted_count logic
-                        logger.info(f"Coach interruption detected for session {session_id}")
+                        logger.info(f"Coach tool interruption flag set for session {session_id}")
     except Exception as e:
         logger.error(f"Failed to process coach tool event: {e}")
 
@@ -191,7 +189,7 @@ async def send_test_end_event(session_id: str):
             user_id="demo-user",
             exercise_type="push_ups",
             rep_count=25,
-            interruption_count=2,
+            user_speech_interruptions=0,
             form_corrections=["keep back straight", "lower chest more"],
             session_goal="improve push-up form"
         )
@@ -262,7 +260,7 @@ async def websocket_endpoint(
         logger.exception("Failed to initialize session manager state; continuing without persistence")
 
     live_request_queue = LiveRequestQueue()
-    interrupted_count = 0
+    user_speech_interruptions = 0
 
     async def send_session_state(status: str, reason: str | None = None) -> None:
         payload: dict[str, str] = {"type": "session_state", "status": status}
@@ -278,7 +276,7 @@ async def websocket_endpoint(
                     logging.info(f"WebSocket disconnected for session {session_id}, cleaning up session")
                     try:
                         state = session_manager.get(session_id)
-                        logging.info(f"Session {session_id} status: {state.status}, exercise_type: {state.current_exercise}, reps: {state.cumulative_rep_count}, interruptions: {state.total_interruptions}")
+                        logging.info(f"Session {session_id} status: {state.status}, exercise_type: {state.current_exercise}, reps: {state.cumulative_rep_count}, pauses: {state.pause_count}, user_speech_interruptions: {user_speech_interruptions}")
                         
                         # Only save summary if session wasn't already properly ended
                         if state.status != "ended":
@@ -289,7 +287,7 @@ async def websocket_endpoint(
                                 user_id=user_id,
                                 exercise_type=state.current_exercise or "unknown",
                                 rep_count=state.cumulative_rep_count,
-                                interruption_count=interrupted_count + state.coach_interruptions,
+                                user_speech_interruptions=user_speech_interruptions,
                                 form_corrections=state.form_corrections,
                                 session_goal="session disconnected"
                             )
@@ -368,7 +366,7 @@ async def websocket_endpoint(
                     
                     # Get current state for accurate data
                     state = session_manager.get(session_id)
-                    logging.info(f"Session state before summary: exercise={state.current_exercise}, reps={state.cumulative_rep_count}, interruptions={state.total_interruptions}, corrections={len(state.form_corrections)}")
+                    logging.info(f"Session state before summary: exercise={state.current_exercise}, reps={state.cumulative_rep_count}, pauses={state.pause_count}, user_speech_interruptions={user_speech_interruptions}, corrections={len(state.form_corrections)}")
                     logging.info(f"form_corrections at summary time: {state.form_corrections}")
                     
                     # Use accumulated state data as primary source, fallback to extracted data
@@ -377,7 +375,7 @@ async def websocket_endpoint(
                         user_id=user_id,
                         exercise_type=state.current_exercise or summary_payload["exercise_type"],
                         rep_count=state.cumulative_rep_count if state.cumulative_rep_count > 0 else summary_payload["rep_count"],
-                        interruption_count=interrupted_count + state.coach_interruptions,
+                        user_speech_interruptions=user_speech_interruptions,
                         form_corrections=state.form_corrections if state.form_corrections else summary_payload["form_corrections"],
                         session_goal=summary_payload["session_goal"] or "coach-guided session",
                     )
@@ -434,7 +432,7 @@ async def websocket_endpoint(
             return
 
     async def downstream_task() -> None:
-        nonlocal interrupted_count
+        nonlocal user_speech_interruptions
         try:
             async for event in runner.run_live(
                 user_id=user_id,
@@ -463,12 +461,12 @@ async def websocket_endpoint(
                 interrupted = bool(getattr(event, "interrupted", False))
                 _trace_coach_turn(type(event).__name__, session_id, user_id, interrupted, str(agent.model))
                 if interrupted:
-                    interrupted_count += 1
+                    user_speech_interruptions += 1
                     logger.info(
-                        "Interruption event session_id=%s user_id=%s interrupted_count=%s",
+                        "Interruption event session_id=%s user_id=%s user_speech_interruptions=%s",
                         session_id,
                         user_id,
-                        interrupted_count,
+                        user_speech_interruptions,
                     )
                 await safe_send_text(event.model_dump_json(exclude_none=True, by_alias=True))
         except WebSocketDisconnect:
@@ -507,7 +505,7 @@ async def websocket_endpoint(
                         user_id=user_id,
                         exercise_type=state.current_exercise or "unknown",
                         rep_count=state.cumulative_rep_count,
-                        interruption_count=interrupted_count + state.coach_interruptions,
+                        user_speech_interruptions=user_speech_interruptions,
                         form_corrections=state.form_corrections,
                         session_goal="session terminated unexpectedly"
                     )

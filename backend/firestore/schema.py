@@ -59,7 +59,7 @@ class SessionSummary:
     ended_at: str
     exercise_type: str | None
     rep_count: int | None
-    interruption_count: int
+    user_speech_interruptions: int  # times user spoke while coach was mid-sentence (ADK event.interrupted)
     form_corrections: tuple[str, ...] = field(default_factory=tuple)
     session_goal: str | None = None
     pause_count: int = 0  # Number of pauses during session
@@ -74,7 +74,7 @@ class SessionSummary:
             "ended_at": self.ended_at,
             "exercise_type": self.exercise_type,
             "rep_count": self.rep_count,
-            "interruption_count": self.interruption_count,
+            "user_speech_interruptions": self.user_speech_interruptions,
             "form_corrections": list(self.form_corrections),
             "session_goal": self.session_goal,
             "pause_count": self.pause_count,
@@ -92,7 +92,7 @@ class SessionSummary:
             ended_at=str(data["ended_at"]),
             exercise_type=data.get("exercise_type"),
             rep_count=_safe_int(data.get("rep_count")),
-            interruption_count=int(data.get("interruption_count", 0)),
+            user_speech_interruptions=int(data.get("user_speech_interruptions") or data.get("interruption_count", 0)),
             form_corrections=corrections,
             session_goal=data.get("session_goal"),
             pause_count=int(data.get("pause_count", 0)),
@@ -108,7 +108,7 @@ async def save_session(db: firestore.AsyncClient, session_id: str, user_id: str,
         "session_id": session_id,
         "exercise_type": session_data.get("exercise_type"),
         "rep_count": session_data.get("rep_count", 0),
-        "interruption_count": session_data.get("interruption_count", 0),
+        "user_speech_interruptions": session_data.get("user_speech_interruptions", 0),
         "form_corrections": session_data.get("form_corrections", []),
         "start_time": session_data.get("start_time"),
         "end_time": firestore.SERVER_TIMESTAMP,

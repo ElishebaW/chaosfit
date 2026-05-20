@@ -273,7 +273,7 @@
         const repCount = report.rep_count ?? details.rep_count ?? 0;
         const exerciseType = report.exercise_type ?? details.exercise_type ?? 'unknown';
         const corrections = report.form_corrections ?? details.form_corrections ?? [];
-        const interruptions = report.interruption_count ?? details.interruption_count ?? 0;
+        const interruptions = report.user_speech_interruptions ?? details.user_speech_interruptions ?? 0;
         const durationSec = report.session_duration_sec ?? null;
         const startedAt = report.started_at ?? details.started_at ?? '';
         const endedAt = report.ended_at ?? details.ended_at ?? '';
