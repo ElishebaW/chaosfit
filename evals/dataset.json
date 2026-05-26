@@ -111,7 +111,7 @@
     },
     {
       "id": "rep_count_double_counted",
-      "description": "Rep double-counted — F-4 pattern; 2 over tolerance",
+      "description": "Rep double-counted — overcounting error; 2 over tolerance",
       "actual": 12,
       "expected": 10,
       "expected_pass": false,
@@ -135,7 +135,7 @@
     },
     {
       "id": "rep_count_false_positive_camera_adjust",
-      "description": "F-2 pattern: user adjusted camera during push-up rest; 2 reps reported, 0 actual exercise reps completed",
+      "description": "F-5 pattern: user adjusted camera during push-up rest; 2 reps reported, 0 actual exercise reps completed",
       "actual": 2,
       "expected": 0,
       "expected_pass": false,
@@ -143,7 +143,7 @@
     },
     {
       "id": "rep_count_false_positive_rest_between_sets",
-      "description": "F-2 pattern: user sat down between sets; model counted body-position change as 1 rep",
+      "description": "F-5 pattern: user sat down between sets; model counted body-position change as 1 rep",
       "actual": 1,
       "expected": 0,
       "expected_pass": false,
@@ -151,7 +151,7 @@
     },
     {
       "id": "rep_count_false_positive_session_start",
-      "description": "F-2 pattern: user shifting weight into starting position before exercise begins; 1 spurious rep reported",
+      "description": "F-5 pattern: user shifting weight into starting position before exercise begins; 1 spurious rep reported",
       "actual": 1,
       "expected": 0,
       "expected_pass": false,
@@ -173,7 +173,7 @@
     },
     {
       "id": "correction_generic_encouragement",
-      "description": "Generic encouragement only — no actionable body-part cue (F-3 pattern)",
+      "description": "Generic encouragement only — no actionable body-part cue",
       "corrections": ["good job", "keep it up"],
       "expected_pass": false,
       "failure_pattern": "correction_too_generic"
