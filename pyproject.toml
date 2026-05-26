@@ -40,6 +40,7 @@ ignore = ["C901", "PLR0915"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["."]
 
 [tool.uv]
 dev-dependencies = [
