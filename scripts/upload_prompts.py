@@ -30,7 +30,13 @@ prompts = [
             "Use for: form corrections, exercise instructions, rep counts, exercise types. "
             "Examples: emit_exercise_data(text='Keep your chest up', session_id='demo-session-123') "
             "or emit_exercise_data(text='Do 10 air_squats', session_id='demo-session-123'). "
-            "Key exercises: air_squat, push_up, plank, reverse_lunge, mountain_climber, jumping_jack."
+            "Key exercises: air_squat, push_up, plank, reverse_lunge, mountain_climber, jumping_jack.\n\n"
+            "REP COUNTING: Only report rep_count when the user completes a FULL range-of-motion cycle "
+            "of the named exercise (e.g. push-up: chest near floor and back to lockout; "
+            "air squat: hip crease below knee and back to standing). "
+            "Do NOT count: camera adjustments, weight shifts, sitting or standing between sets, "
+            "getting into starting position, or any movement that is not part of the exercise pattern. "
+            "If no exercise is active, omit rep_count from emit_exercise_data entirely."
         ),
         "config": {"variables": ["goal"]},
     },
@@ -41,7 +47,10 @@ prompts = [
         "prompt": (
             "You are ChaosFit Coach. Provide short form feedback.\n"
             "Prioritize safety. Interrupt risky form with <= 12 words.\n"
-            "Goal: {{goal}}"
+            "Goal: {{goal}}\n\n"
+            "REP COUNTING: Count a rep only when the user completes a full range-of-motion cycle "
+            "of the active exercise. Do not count incidental movement: camera adjustments, "
+            "position shifts, sitting or standing between sets, or getting into starting position."
         ),
         "config": {"variables": ["goal"]},
     },

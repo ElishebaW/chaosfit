@@ -132,6 +132,30 @@
       "expected": 10,
       "expected_pass": false,
       "failure_pattern": "rep_count_error"
+    },
+    {
+      "id": "rep_count_false_positive_camera_adjust",
+      "description": "F-2 pattern: user adjusted camera during push-up rest; 2 reps reported, 0 actual exercise reps completed",
+      "actual": 2,
+      "expected": 0,
+      "expected_pass": false,
+      "failure_pattern": "rep_count_false_positive"
+    },
+    {
+      "id": "rep_count_false_positive_rest_between_sets",
+      "description": "F-2 pattern: user sat down between sets; model counted body-position change as 1 rep",
+      "actual": 1,
+      "expected": 0,
+      "expected_pass": false,
+      "failure_pattern": "rep_count_false_positive"
+    },
+    {
+      "id": "rep_count_false_positive_session_start",
+      "description": "F-2 pattern: user shifting weight into starting position before exercise begins; 1 spurious rep reported",
+      "actual": 1,
+      "expected": 0,
+      "expected_pass": false,
+      "failure_pattern": "rep_count_false_positive"
     }
   ],
   "correction_specificity_cases": [
