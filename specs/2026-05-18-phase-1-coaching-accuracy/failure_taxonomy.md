@@ -95,6 +95,29 @@ synthetic-frame harness.
 
 ---
 
+## F-5 · Rep count false positives from incidental movement
+
+**Severity:** Medium — spurious reps inflate session summary counts and erode user trust.
+
+**Evidence:** Manual testing (post-PR #33) showed rep_count incrementing during:
+- Camera position adjustment mid-session
+- Sitting or standing between sets
+- Shifting weight into starting position before an exercise begins
+
+**Root cause:** The coach system prompt gave no definition of what qualifies as a rep.
+`emit_exercise_data` was called with `rep_count` whenever the model saw movement near an
+active exercise context, not only on completed range-of-motion cycles.
+
+**Fix:** Added explicit `REP COUNTING` guidance to `coach-system-instruction` and
+`coach-system-instruction-native-audio` (PR #36): a rep requires a full range-of-motion
+cycle; incidental movement must not increment the count.
+
+**Eval coverage:** `rep_count_false_positive_camera_adjust`, `rep_count_false_positive_rest_between_sets`,
+`rep_count_false_positive_session_start` in `evals/dataset.json`. Evaluator enforces
+zero tolerance when `expected=0`.
+
+---
+
 ## What the traces confirm is working
 
 - Session state machine: `active → paused → resumed → ended` sequencing is correct

@@ -81,10 +81,14 @@ def eval_rep_count_accuracy(
     expected_pass: bool,
     tolerance: int = REP_COUNT_TOLERANCE,
 ) -> EvalResult:
-    """Score whether the rep count is within ±tolerance of the expected count."""
+    """Score whether the rep count is within ±tolerance of the expected count.
+
+    When expected=0, tolerance is forced to 0 — any non-zero count is a false positive.
+    """
+    effective_tolerance = 0 if expected == 0 else tolerance
     delta = abs(actual - expected)
-    score = 1.0 if delta <= tolerance else 0.0
-    reason = f"actual={actual}, expected={expected}, delta={delta} ({'within' if score == 1.0 else 'exceeds'} ±{tolerance})"
+    score = 1.0 if delta <= effective_tolerance else 0.0
+    reason = f"actual={actual}, expected={expected}, delta={delta} ({'within' if score == 1.0 else 'exceeds'} ±{effective_tolerance})"
     return EvalResult(
         case_id=case_id,
         evaluator="rep_count_accuracy",
