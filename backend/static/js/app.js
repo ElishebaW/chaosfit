@@ -1604,6 +1604,9 @@ function sendPeriodicCoachPrompt() {
   if (isSessionPaused || !isVideoStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {
     return;
   }
+  if (!currentExercise) {
+    return;
+  }
   websocket.send(JSON.stringify({
     type: "text",
     text: "Video stream is active. Give one short form correction if needed."
