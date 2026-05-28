@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
@@ -129,14 +130,20 @@ def eval_correction_specificity(
         elif not any(kw in lower for kw in _BODY_PART_KEYWORDS):
             no_body_part.append(correction)
 
+    counts = Counter(c.lower().strip() for c in corrections)
+    repeated = [text for text, count in counts.items() if count >= 3]
+
     if generic_found:
         reason = f"Generic phrases found: {generic_found}"
         score = 0.0
     elif no_body_part:
         reason = f"No body-part keyword: {no_body_part}"
         score = 0.0
+    elif repeated:
+        reason = f"Correction repeated 3+ times without new error: {repeated[:2]}"
+        score = 0.0
     else:
-        reason = f"All {len(corrections)} correction(s) are specific"
+        reason = f"All {len(corrections)} correction(s) are specific and non-repetitive"
         score = 1.0
 
     return EvalResult(

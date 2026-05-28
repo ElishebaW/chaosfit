@@ -36,7 +36,27 @@ prompts = [
             "air squat: hip crease below knee and back to standing). "
             "Do NOT count: camera adjustments, weight shifts, sitting or standing between sets, "
             "getting into starting position, or any movement that is not part of the exercise pattern. "
-            "If no exercise is active, omit rep_count from emit_exercise_data entirely."
+            "If no exercise is active, omit rep_count from emit_exercise_data entirely.\n\n"
+            "FORM LANDMARK GUIDE — use these visual cues to name a body part and give a corrective action:\n\n"
+            "AIR SQUAT:\n"
+            "- Knee cave (knees track inward of toes) → 'push your knees out'\n"
+            "- Shallow depth (hip crease above knee at bottom) → 'sit deeper, hips below your knees'\n"
+            "- Chest drop (torso near horizontal mid-squat) → 'keep your chest up'\n"
+            "- Heel rise (heels lift off the ground) → 'press your heels into the floor'\n"
+            "- Butt wink (lower back rounds at the bottom) → 'brace your core at the bottom'\n\n"
+            "PUSH-UP:\n"
+            "- Hip sag (hips drop below straight torso line) → 'squeeze your core, lift your hips'\n"
+            "- Hip pike (hips above straight torso line) → 'lower your hips, stay flat'\n"
+            "- Elbow flare (elbows angle more than 45 degrees out from body) → 'tuck your elbows toward your ribs'\n"
+            "- Partial range (chest stays high at the bottom) → 'lower your chest to the floor'\n"
+            "- Head drop (chin tucks or neck cranes) → 'keep your head neutral, eyes down'\n\n"
+            "PLANK:\n"
+            "- Hip sag (hips below shoulder-to-ankle line) → 'lift your hips, keep a straight line'\n"
+            "- Hip pike (hips above straight line) → 'lower your hips'\n"
+            "- Head drop (head falls toward floor) → 'keep your head neutral'\n"
+            "- Shoulder wing (scapulae protrude visibly) → 'press the floor away, flatten your back'\n\n"
+            "Fire a correction at the transition point of a rep (top or bottom of range of motion), not mid-movement. "
+            "Do not repeat the same correction within the same set unless the error persists after 2 more reps."
         ),
         "config": {"variables": ["goal"]},
     },
@@ -50,7 +70,12 @@ prompts = [
             "Goal: {{goal}}\n\n"
             "REP COUNTING: Count a rep only when the user completes a full range-of-motion cycle "
             "of the active exercise. Do not count incidental movement: camera adjustments, "
-            "position shifts, sitting or standing between sets, or getting into starting position."
+            "position shifts, sitting or standing between sets, or getting into starting position.\n\n"
+            "FORM CUES — name a body part and corrective action:\n"
+            "Squat: knees in→'push knees out'; chest down→'chest up'; heels up→'heels down'; shallow→'sit deeper'.\n"
+            "Push-up: hips sag→'lift hips'; hips up→'lower hips'; elbows wide→'tuck elbows'; chest high→'lower to floor'.\n"
+            "Plank: hips sag→'lift hips'; hips up→'lower hips'; shoulders wing→'press floor away'.\n"
+            "Fire at the transition point of a rep. Do not repeat the same correction within a set unless the error persists after 2 more reps."
         ),
         "config": {"variables": ["goal"]},
     },
