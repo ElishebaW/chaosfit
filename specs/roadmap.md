@@ -69,7 +69,7 @@ Once real session traces are collected, use them to identify where the agent dri
 - [x] Run evals in CI on PRs touching agent logic
 
 ### Coaching Accuracy
-- [ ] Improve exercise detection accuracy (reduce false positives in rep counting)
+- [x] Improve exercise detection accuracy (reduce false positives in rep counting) — prompt updated, 27/27 evals pass (PR #36)
 - [ ] More precise, concise form feedback (timing and specificity of corrections)
 - [ ] Advanced pose estimation for common bodyweight movements (squat, push-up, plank)
 - [ ] Expand exercise library beyond current 20+ movements
