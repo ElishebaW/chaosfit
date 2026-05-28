@@ -75,7 +75,7 @@ ChaosFit uses Gemini Live API's multimodal capabilities to create an interactive
 ```env
    GOOGLE_GENAI_USE_VERTEXAI=FALSE
    GOOGLE_API_KEY=<your-gemini-api-key>
-   DEMO_AGENT_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+   DEMO_AGENT_MODEL=gemini-2.5-flash-live-001
    ENABLE_FIRESTORE=true
    GOOGLE_CLOUD_PROJECT=chaos-fit
 ```
@@ -270,7 +270,7 @@ The backend also injects the routine plan into the coach context so the coach ca
 - **Docker** - Containerized deployment
 
 ### ML/AI Components
-- **Gemini Live API (gemini-2.5-flash-native-audio-preview-12-2025)** - Real-time multimodal AI
+- **Gemini Live API (gemini-2.5-flash-live-001)** - Real-time multimodal AI
 - **Custom exercise detection** - Pattern matching for workout identification
 - **Form analysis algorithms** - Computer vision for posture assessment
 - **Adaptive scheduling engine** - Dynamic workout optimization
