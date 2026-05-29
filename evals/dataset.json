@@ -197,6 +197,80 @@
       "description": "No corrections — valid for a clean session with good form",
       "corrections": [],
       "expected_pass": true
+    },
+    {
+      "id": "correction_squat_knee_cave",
+      "description": "Squat landmark — knee cave cue from Group 3 guide; should pass",
+      "corrections": ["push your knees out"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_squat_depth",
+      "description": "Squat landmark — shallow depth cue; should pass",
+      "corrections": ["sit deeper, hips below your knees"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_squat_chest_drop",
+      "description": "Squat landmark — chest/torso drop cue; should pass",
+      "corrections": ["keep your chest up"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_squat_heel_rise",
+      "description": "Squat landmark — heel rise cue; should pass",
+      "corrections": ["press your heels into the floor"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_pushup_elbow_flare",
+      "description": "Push-up landmark — elbow flare cue from Group 3 guide; should pass",
+      "corrections": ["tuck your elbows toward your ribs"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_pushup_hip_sag",
+      "description": "Push-up landmark — hip sag cue; should pass",
+      "corrections": ["squeeze your core, lift your hips"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_pushup_partial_range",
+      "description": "Push-up landmark — partial range of motion cue; should pass",
+      "corrections": ["lower your chest to the floor"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_plank_hip_sag",
+      "description": "Plank landmark — hip sag cue from Group 3 guide; should pass",
+      "corrections": ["lift your hips, keep a straight line"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_plank_shoulder_wing",
+      "description": "Plank landmark — shoulder wing cue; should pass",
+      "corrections": ["press the floor away, flatten your back"],
+      "expected_pass": true
+    },
+    {
+      "id": "correction_repeated_same_cue",
+      "description": "Timing failure — same correction issued 3 times in a set; coach not adapting",
+      "corrections": ["keep your chest up", "keep your chest up", "keep your chest up"],
+      "expected_pass": false,
+      "failure_pattern": "correction_repeated_without_new_error"
+    },
+    {
+      "id": "correction_repeated_plank_cue",
+      "description": "Timing failure — same plank cue repeated 4 times; coach stuck in a loop",
+      "corrections": ["lift your hips", "lift your hips", "lift your hips", "lift your hips"],
+      "expected_pass": false,
+      "failure_pattern": "correction_repeated_without_new_error"
+    },
+    {
+      "id": "correction_two_identical_allowed",
+      "description": "Same correction twice is acceptable — error may have persisted one rep",
+      "corrections": ["push your knees out", "push your knees out"],
+      "expected_pass": true
     }
   ],
   "interruption_integrity_cases_note": "interruption_count = ADK coach interruptions (event.interrupted). pause_count is a separate field. These cases verify interruption_count is not inflated by form corrections (F-1 bug).",

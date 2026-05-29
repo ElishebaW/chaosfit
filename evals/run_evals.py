@@ -37,12 +37,12 @@ def _post_scores_to_langfuse(results: list[EvalResult]) -> None:
 
         lf = Langfuse()
         for r in results:
-            lf.score(
+            lf.create_score(
+                trace_id=f"eval-dataset-{r.case_id}",
                 name=r.evaluator,
                 value=r.score,
-                comment=r.reason,
                 data_type="NUMERIC",
-                trace_id=f"eval-dataset-{r.case_id}",
+                comment=r.reason,
             )
         lf.flush()
         print("  Scores posted to Langfuse.")
