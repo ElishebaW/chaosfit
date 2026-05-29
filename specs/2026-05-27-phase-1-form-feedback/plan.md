@@ -2,27 +2,28 @@
 
 Each group is a shippable unit. Complete in order.
 
-## Group 1 — Diagnose current feedback patterns
-1. Query Firestore session documents to find recent corrections: note the rep count at correction time and whether the correction was specific (body part + action) or generic.
-2. Cross-reference with Langfuse traces (where available) to identify timing failures: corrections that fire before a rep is complete, repeated corrections within the same set without a new error, corrections that arrive after the user has already moved on.
-3. Document the top 3–5 failure patterns as comments in `evals/dataset.json` to inform new cases in Group 2.
+## Group 1 — Diagnose current feedback patterns ✓
+1. ✓ Query Firestore session documents to find recent corrections: note the rep count at correction time and whether the correction was specific (body part + action) or generic.
+2. ✓ Cross-reference with Langfuse traces (where available) to identify timing failures: corrections that fire before a rep is complete, repeated corrections within the same set without a new error, corrections that arrive after the user has already moved on.
+3. ✓ Document the top 3–5 failure patterns as comments in `evals/dataset.json` to inform new cases in Group 2.
 
-## Group 2 — Prompt changes for timing and specificity
-1. Update `coach-system-instruction` and `coach-system-instruction-native-audio` in Langfuse:
+## Group 2 — Prompt changes for timing and specificity ✓ (PR #39, PR #40)
+1. ✓ Updated `coach-system-instruction` and `coach-system-instruction-native-audio` in Langfuse:
    - Require every form correction to follow `[body part] + [corrective action]` (e.g. "drop your hips", "tuck your elbows in").
-   - Add explicit guidance: do not repeat the same correction within the same set unless the error persists after 2 reps.
-   - Add timing constraint: corrections should fire at the transition point of a rep (top or bottom of range of motion), not mid-movement.
-2. Upload revised prompt versions via `scripts/upload_prompts.py`.
-3. Verify new prompt version appears linked to traces in Langfuse.
+   - Correct form errors immediately as they happen — do not wait for a rep to complete (PR #39; replaced transition-point rule after conflict resolution in PR #40).
+   - Do not repeat the same correction within the same set unless the error persists after 2 more reps.
+2. ✓ Uploaded revised prompt versions via `scripts/upload_prompts.py`.
+3. ✓ New prompt versions appear linked to traces in Langfuse.
 
-## Group 3 — Pose cues for squat, push-up, plank
-1. For each of squat, push-up, and plank, document 3–5 common form errors and the observable landmarks Gemini multimodal can see (e.g. knee cave, hip hinge depth, elbow flare, core sag visible via torso line).
-2. Add a per-exercise landmark guide section to `coach-system-instruction` in Langfuse covering acceptable ranges for each landmark.
-3. If prompt-only changes are insufficient (landmark guidance does not change correction quality after one iteration), audit `backend/live_agent/` for any pose threshold or trigger logic that could be adjusted.
+## Group 3 — Pose cues for squat, push-up, plank ✓ (PR #40)
+1. ✓ Documented 5 errors for air squat, 5 for push-up, 4 for plank — each with observable visual landmark and corrective phrase.
+2. ✓ Added per-exercise landmark guide to `coach-system-instruction` (full) and `coach-system-instruction-native-audio` (abbreviated) in Langfuse.
+3. ✓ Backend audit complete: `backend/live_agent/` has no pose thresholds or trigger logic — all detection is prompt-driven, no code changes needed.
 
-## Group 4 — Eval coverage and gate
-1. Add `correction_specificity_cases` to `evals/dataset.json` covering:
-   - Timing failures: correction fires too early (mid-rep), correction repeated without new error
-   - Landmark-specific cases for squat, push-up, and plank errors from Group 3 step 1
-2. Run `evals/run_evals.py` locally; iterate on prompt and/or backend logic until all new cases pass.
-3. Confirm CI runs `evals/run_evals.py` on PRs touching `backend/live_agent/` or `evals/` (see `.github/workflows/ci.yml`).
+## Group 4 — Eval coverage and gate ✓ (PR #40)
+1. ✓ Added 13 new `correction_specificity_cases` to `evals/dataset.json`:
+   - 2 repetition failure cases (same correction 3+ times)
+   - 9 landmark-specific pass cases (squat ×4, push-up ×3, plank ×2)
+   - 1 two-identical boundary case
+2. ✓ `evals/run_evals.py` passes 39/39 locally; `eval_correction_specificity` extended with Counter-based repetition check.
+3. ✓ CI runs `evals/run_evals.py --ci` on all PRs (confirmed in `.github/workflows/ci.yml`).

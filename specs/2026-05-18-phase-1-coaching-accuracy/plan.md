@@ -17,12 +17,12 @@ Each group is a shippable unit. Complete in order.
 - [x] Form feedback prompt update: require `[body part] + [corrective action]` pattern, eliminate generic phrases — tracked in `specs/2026-05-27-phase-1-form-feedback/`
 
 ## Group 3 — Advanced pose estimation for squat, push-up, plank
-- [ ] Extend `coach-system-instruction` with joint-angle guidance: squat (hip/knee depth), push-up (elbow angle, back alignment), plank (hip height, shoulder stack)
-- [ ] Add canvas overlay rendering in `app.js`: draw joint markers and alignment lines for the three target exercises
-- [ ] Wire Gemini response pose data to canvas draw calls — parse structured pose output from model turns and translate to pixel coordinates
-- [ ] Test overlays locally against camera feed; confirm joint markers track movement correctly
+- [x] Extend `coach-system-instruction` with joint-angle guidance: squat (hip/knee depth), push-up (elbow angle, back alignment), plank (hip height, shoulder stack) — prompt-level landmark guide shipped (PR #40)
+- [ ] Add canvas overlay rendering in `app.js`: draw joint markers and alignment lines for the three target exercises — deferred to Phase 3
+- [ ] Wire Gemini response pose data to canvas draw calls — parse structured pose output from model turns and translate to pixel coordinates — deferred to Phase 3
+- [ ] Test overlays locally against camera feed; confirm joint markers track movement correctly — deferred to Phase 3
 
-## Group 4 — CI gate
+## Group 4 — CI gate ✓
 - [x] Add coaching accuracy evals to the `evals` job in `.github/workflows/ci.yml` (PR #33)
 - [x] Confirm `boundary-check` job still passes with updated prompts (PR #36)
-- [ ] Open PR; confirm all jobs green before merge
+- [x] Open PR; confirm all jobs green before merge (PR #40, merged)
