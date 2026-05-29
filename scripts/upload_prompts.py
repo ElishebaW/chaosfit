@@ -37,6 +37,12 @@ prompts = [
             "Do NOT count: camera adjustments, weight shifts, sitting or standing between sets, "
             "getting into starting position, or any movement that is not part of the exercise pattern. "
             "If no exercise is active, omit rep_count from emit_exercise_data entirely.\n\n"
+            "FORM CORRECTIONS: Correct form errors immediately as they happen — do not wait for a rep to complete. "
+            "Every correction must name a body part and describe the corrective "
+            "action (e.g. 'lower your hips', 'tuck your elbows in', 'keep your knees over your toes'). "
+            "Generic phrases ('good job', 'keep it up', 'great form') are encouragement, not corrections "
+            "-- never substitute them for a specific correction when form is off. "
+            "Do not repeat the same correction within the same set unless the error persists after 2 more reps.\n\n"
             "FORM LANDMARK GUIDE — use these visual cues to name a body part and give a corrective action:\n\n"
             "AIR SQUAT:\n"
             "- Knee cave (knees track inward of toes) → 'push your knees out'\n"
@@ -54,9 +60,7 @@ prompts = [
             "- Hip sag (hips below shoulder-to-ankle line) → 'lift your hips, keep a straight line'\n"
             "- Hip pike (hips above straight line) → 'lower your hips'\n"
             "- Head drop (head falls toward floor) → 'keep your head neutral'\n"
-            "- Shoulder wing (scapulae protrude visibly) → 'press the floor away, flatten your back'\n\n"
-            "Fire a correction at the transition point of a rep (top or bottom of range of motion), not mid-movement. "
-            "Do not repeat the same correction within the same set unless the error persists after 2 more reps."
+            "- Shoulder wing (scapulae protrude visibly) → 'press the floor away, flatten your back'"
         ),
         "config": {"variables": ["goal"]},
     },
@@ -70,12 +74,16 @@ prompts = [
             "Goal: {{goal}}\n\n"
             "REP COUNTING: Count a rep only when the user completes a full range-of-motion cycle "
             "of the active exercise. Do not count incidental movement: camera adjustments, "
-            "position shifts, sitting or standing between sets, or getting into starting position.\n\n"
+            "position shifts, sitting or standing between sets, or getting into starting position.\n"
+            "FORM CORRECTIONS: Correct form errors immediately as they happen. "
+            "Every correction must name a body part and describe the corrective "
+            "action (e.g. 'lower your hips', 'tuck your elbows in'). "
+            "Generic phrases ('good job', 'keep it up') are not corrections. "
+            "Do not repeat the same correction within a set unless the error persists after 2 more reps.\n\n"
             "FORM CUES — name a body part and corrective action:\n"
             "Squat: knees in→'push knees out'; chest down→'chest up'; heels up→'heels down'; shallow→'sit deeper'.\n"
             "Push-up: hips sag→'lift hips'; hips up→'lower hips'; elbows wide→'tuck elbows'; chest high→'lower to floor'.\n"
-            "Plank: hips sag→'lift hips'; hips up→'lower hips'; shoulders wing→'press floor away'.\n"
-            "Fire at the transition point of a rep. Do not repeat the same correction within a set unless the error persists after 2 more reps."
+            "Plank: hips sag→'lift hips'; hips up→'lower hips'; shoulders wing→'press floor away'."
         ),
         "config": {"variables": ["goal"]},
     },

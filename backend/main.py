@@ -218,9 +218,10 @@ async def websocket_endpoint(
             return
 
     model_name = str(agent.model)
-    is_native_audio = "native-audio" in model_name.lower()
+    # Covers both old preview naming (native-audio-*) and GA live naming (*-live-*)
+    is_audio_capable = "native-audio" in model_name.lower() or "-live-" in model_name.lower()
 
-    if is_native_audio:
+    if is_audio_capable:
         run_config = RunConfig(
             streaming_mode=StreamingMode.BIDI,
             response_modalities=["AUDIO"],
