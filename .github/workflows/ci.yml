@@ -248,7 +248,7 @@ jobs:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.IMAGE }}
-          min_instance_count: 1
+          min_instance_count: 0
           env_vars: |
             GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }}
             ENABLE_FIRESTORE=true
