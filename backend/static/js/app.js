@@ -1170,7 +1170,10 @@ async function prewarmAndConnect() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PREWARM_TIMEOUT_MS);
   try {
-    await fetch(healthUrl, { signal: controller.signal });
+    const res = await fetch(healthUrl, { signal: controller.signal, cache: 'no-store' });
+    if (!res.ok) {
+      console.warn(`Prewarm: /healthz returned ${res.status}, connecting anyway`);
+    }
   } catch (_) {
     // Server unreachable or timed out — try connecting anyway
   } finally {
