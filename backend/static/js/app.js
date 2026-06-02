@@ -15,7 +15,7 @@ let is_audio = false;
 // Initialize event listeners when DOM is ready
 function initializeApp() {
   setupEventListeners();
-  connectWebsocket();
+  prewarmAndConnect();
 }
 
 // Get checkbox elements for RunConfig options
@@ -1160,7 +1160,25 @@ function connectWebsocket() {
     }, '⚠️', 'system');
   };
 }
-connectWebsocket();
+async function prewarmAndConnect() {
+  const PREWARM_TIMEOUT_MS = 20000;
+  const healthUrl = window.location.origin + '/healthz';
+
+  statusText.textContent = "Starting up...";
+  statusIndicator.classList.add("disconnected");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PREWARM_TIMEOUT_MS);
+  try {
+    await fetch(healthUrl, { signal: controller.signal });
+  } catch (_) {
+    // Server unreachable or timed out — try connecting anyway
+  } finally {
+    clearTimeout(timer);
+  }
+
+  connectWebsocket();
+}
 
 // Add submit handler to the form
 function addSubmitHandler() {

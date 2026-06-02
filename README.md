@@ -403,6 +403,36 @@ Finally, ChaosFit uses Google ADK directly, not LangChain. LangSmith's deepest i
 
 ---
 
+## Design Decisions
+
+Key architectural and infrastructure choices made during development, with rationale.
+
+### Cloud Run: Scale to Zero + HTTP Pre-warm
+
+**Decision:** `min_instance_count` is set to `0` in CI, allowing Cloud Run to scale to zero when idle. Before opening a WebSocket connection, the frontend hits `/healthz` over HTTP and waits for a 200 response.
+
+**Why:** Keeping `min_instance_count=1` runs one instance continuously, incurring cost even when no one is using the app. Cold starts (~11 seconds) cannot be avoided entirely, but they can be absorbed by an HTTP pre-warm request rather than failing a WebSocket handshake — WebSocket connections die silently if the server isn't ready, while HTTP requests simply wait.
+
+**Trade-off:** Users experience a "Starting up..." delay (up to ~20 seconds) on the first connection after an idle period. Subsequent connections within the same session are unaffected.
+
+**What changed:**
+- `ci.yml` — `min_instance_count: 0`
+- `backend/static/js/app.js` — `prewarmAndConnect()` fetches `/healthz` with a 20-second AbortController timeout before calling `connectWebsocket()`; the timer is cleared in a `finally` block to avoid stale timers on fetch failure
+
+### WebSocket Initialization: Single Entry Point
+
+**Decision:** All WebSocket initialization is routed through `initializeApp() → prewarmAndConnect() → connectWebsocket()`. There is no top-level call to `prewarmAndConnect()` outside of `initializeApp()`.
+
+**Why:** When `app.js` is loaded as a module, code at the top level executes immediately during module evaluation — before the DOM-ready guard at the bottom of the file fires `initializeApp()`. A standalone `prewarmAndConnect()` call created a second WebSocket for the same `sessionId`, racing with the intended connection. The orphaned socket could still receive messages, mutate shared UI state, clear `pingTimer`, and schedule further reconnects.
+
+**What changed:** `initializeApp()` calls `prewarmAndConnect()` instead of `connectWebsocket()` directly; the standalone invocation was removed.
+
+### Observability: Langfuse over LangSmith
+
+ChaosFit uses Langfuse for tracing rather than LangSmith. See the [Observability](#observability) section above for full rationale.
+
+---
+
 ## License
 
 Apache License 2.0 - see LICENSE file for details.
