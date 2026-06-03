@@ -92,6 +92,38 @@ _safe_str = safe_str
 _normalize_corrections = normalize_corrections
 
 
+def _compile_resume_context(context: dict[str, Any]) -> str:
+    exercise = context.get("current_exercise") or "the exercise"
+    reps = context.get("reps_this_set", 0)
+    remaining = context.get("time_remaining_sec")
+    elapsed = int(context.get("elapsed_active_sec", 0))
+    pause_count = context.get("pause_count", 0)
+    last_correction = context.get("last_correction")
+
+    if remaining is not None:
+        mins, secs = divmod(remaining, 60)
+        time_context = f"{mins}m {secs}s remaining" if mins else f"{secs}s remaining"
+    else:
+        mins = elapsed // 60
+        time_context = f"~{mins} minute{'s' if mins != 1 else ''} in" if mins else "just started"
+
+    try:
+        prompt_obj = _langfuse.get_prompt("coach-resume-context", label="production")
+        return prompt_obj.compile(
+            current_exercise=str(exercise),
+            reps_this_set=str(reps),
+            total_reps=str(context.get("total_reps", 0)),
+            time_context=time_context,
+            pause_count=str(pause_count),
+            last_correction=str(last_correction) if last_correction else "none",
+        )
+    except Exception:
+        return (
+            f"Session resumed. You were doing {exercise} — {reps} reps in this set. "
+            f"{time_context.capitalize()}. Continue coaching from where you left off."
+        )
+
+
 async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> None:
     """Process coach tool responses for exercise data events."""
     try:
@@ -338,6 +370,11 @@ async def websocket_endpoint(
                 if event_type == "resume":
                     session_manager.resume_session(session_id)
                     await send_session_state("resumed")
+                    state = session_manager.get(session_id)
+                    resume_text = _compile_resume_context(state.contextual_resume_summary())
+                    live_request_queue.send_content(
+                        types.Content(parts=[types.Part(text=resume_text)])
+                    )
                     continue
 
                 if event_type == "ping":

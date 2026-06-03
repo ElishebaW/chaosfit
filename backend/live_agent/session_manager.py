@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from google import genai
@@ -67,6 +68,15 @@ def _trace_session_summary(session_id: str, exercise_type: str | None, rep_count
         }
 
 
+def _elapsed_seconds(iso_ts: str) -> float:
+    """Seconds elapsed since an ISO timestamp. Returns 0.0 on parse failure."""
+    try:
+        dt = datetime.fromisoformat(iso_ts)
+        return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds())
+    except (ValueError, TypeError):
+        return 0.0
+
+
 @dataclass
 class SessionState:
     session_id: str
@@ -95,6 +105,27 @@ class SessionState:
     prefer_low_impact: bool = False
     level: str | None = None
     routine_plan: dict[str, Any] | None = None
+
+    def elapsed_active_sec(self) -> float:
+        """Wall-clock seconds minus accumulated pause time."""
+        return max(0.0, _elapsed_seconds(self.started_at) - self.total_pause_time_seconds)
+
+    def remaining_time_sec(self) -> int | None:
+        """Remaining seconds based on planned duration. None if duration is unknown."""
+        if self.planned_duration_minutes is None:
+            return None
+        return max(0, int(self.planned_duration_minutes * 60 - self.elapsed_active_sec()))
+
+    def contextual_resume_summary(self) -> dict[str, Any]:
+        return {
+            "current_exercise": self.current_exercise,
+            "reps_this_set": self.rep_count,
+            "total_reps": self.cumulative_rep_count,
+            "time_remaining_sec": self.remaining_time_sec(),
+            "elapsed_active_sec": int(self.elapsed_active_sec()),
+            "pause_count": self.pause_count,
+            "last_correction": self.form_corrections[-1] if self.form_corrections else None,
+        }
 
 
 class SessionManager:
@@ -393,20 +424,29 @@ class SessionManager:
         )
         return state
 
-    def resume_session(self, session_id: str, pause_duration_seconds: float = 0.0) -> SessionState:
+    def resume_session(self, session_id: str, pause_duration_seconds: float | None = None) -> SessionState:
         state = self.get(session_id)
         if state.status == "ended":
             return state
         state.status = "active"
         state.pause_reason = None
         state.resumed_at = utc_now_iso()
+        if pause_duration_seconds is None:
+            pause_duration_seconds = _elapsed_seconds(state.paused_at) if state.paused_at else 0.0
         state.total_pause_time_seconds += pause_duration_seconds
+        context = state.contextual_resume_summary()
         _trace_interruption(session_id, "resume", None, state.pause_count, state.total_pause_time_seconds)
         self._upsert_session_doc(state)
         self.append_event(
             session_id,
             "session_state",
-            {"status": "resumed", "resumed_at": state.resumed_at, "pause_duration_seconds": pause_duration_seconds, "total_pause_time_seconds": state.total_pause_time_seconds},
+            {
+                "status": "resumed",
+                "resumed_at": state.resumed_at,
+                "pause_duration_seconds": pause_duration_seconds,
+                "total_pause_time_seconds": state.total_pause_time_seconds,
+                "resume_context": context,
+            },
         )
         return state
 
