@@ -21,7 +21,7 @@ from backend.firestore.schema import (
     SessionSummary,
     utc_now_iso,
 )
-from backend.routines import AdaptiveContext, generate_next_unknown_time_block, load_exercise_library
+from backend.routines import AdaptiveContext, generate_next_unknown_time_block, load_exercise_library, rebuild_remaining_plan, should_reschedule
 from .form_feedback_prompt import build_next_block_prompt
 
 try:
@@ -52,6 +52,18 @@ def _trace_exercise_update(session_id: str, exercise_id: str | None, rep_count: 
 def _trace_interruption(session_id: str, event_type: str, reason: str | None, pause_count: int, total_pause_time_seconds: float) -> dict[str, Any]:
     with propagate_attributes(session_id=session_id):
         return {"session_id": session_id, "event_type": event_type, "reason": reason, "pause_count": pause_count, "total_pause_time_seconds": total_pause_time_seconds}
+
+
+@observe(name="adaptive_reschedule")
+def _trace_adaptive_reschedule(session_id: str, trigger: str, old_plan_duration_sec: int, new_plan_duration_sec: int, remaining_blocks: int) -> dict[str, Any]:
+    with propagate_attributes(session_id=session_id):
+        return {
+            "session_id": session_id,
+            "trigger": trigger,
+            "old_plan_duration_sec": old_plan_duration_sec,
+            "new_plan_duration_sec": new_plan_duration_sec,
+            "remaining_blocks": remaining_blocks,
+        }
 
 
 @observe(name="session_summary_generation")
@@ -105,6 +117,7 @@ class SessionState:
     prefer_low_impact: bool = False
     level: str | None = None
     routine_plan: dict[str, Any] | None = None
+    current_block_index: int = 0
 
     def elapsed_active_sec(self) -> float:
         """Wall-clock seconds minus accumulated pause time."""
@@ -449,6 +462,35 @@ class SessionManager:
             },
         )
         return state
+
+    def maybe_reschedule(self, session_id: str, *, trigger: str) -> bool:
+        """Rebuild unstarted blocks if actual time has drifted from plan. Resets current_block_index. Returns True if rescheduled."""
+        state = self.get(session_id)
+        time_remaining = state.remaining_time_sec()
+        if not should_reschedule(
+            routine_plan=state.routine_plan,
+            time_remaining_sec=time_remaining,
+            current_block_index=state.current_block_index,
+        ):
+            return False
+        old_blocks = ((state.routine_plan or {}).get("blocks") or [])[state.current_block_index:]
+        old_total = sum(b.get("duration_sec", 0) for b in old_blocks)
+        new_plan = rebuild_remaining_plan(state.routine_plan, time_remaining, state.current_block_index)  # type: ignore[arg-type]
+        new_blocks = new_plan.get("blocks") or []
+        new_total = sum(b.get("duration_sec", 0) for b in new_blocks)
+        state.routine_plan = new_plan
+        state.current_block_index = 0  # new plan starts from the beginning
+        _trace_adaptive_reschedule(session_id, trigger, old_total, new_total, len(new_blocks))
+        logging.info(
+            "Rescheduled session %s trigger=%s old=%ds new=%ds blocks=%d",
+            session_id, trigger, old_total, new_total, len(new_blocks),
+        )
+        return True
+
+    def advance_block(self, session_id: str) -> None:
+        """Mark the current block as complete and advance to the next."""
+        state = self.get(session_id)
+        state.current_block_index += 1
 
     def can_accept_media(self, session_id: str) -> bool:
         state = self.get(session_id)
