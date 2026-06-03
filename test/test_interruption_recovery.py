@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
-
-from backend.live_agent.session_manager import SessionState, _elapsed_seconds
+from backend.live_agent.session_manager import SessionManager, SessionState, _elapsed_seconds
 
 
 def _make_state(**kwargs) -> SessionState:
@@ -114,9 +112,8 @@ class TestContextualResumeSummary:
 class TestResumePauseDuration:
     """resume_session() must auto-compute pause duration from paused_at."""
 
-    def _make_manager(self) -> "SessionManager":
+    def _make_manager(self) -> SessionManager:
         with patch.dict("os.environ", {"ENABLE_FIRESTORE": "false"}):
-            from backend.live_agent.session_manager import SessionManager
             mgr = SessionManager()
         return mgr
 
