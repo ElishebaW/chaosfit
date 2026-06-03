@@ -108,6 +108,25 @@ prompts = [
         "config": {"variables": ["exercise", "rep_count", "corrections", "interruptions", "duration_text", "goal"]},
     },
     {
+        "name": "coach-resume-context",
+        "type": "text",
+        "labels": ["production"],
+        "prompt": (
+            "Session resumed. Pick up exactly where the user left off.\n\n"
+            "Current state:\n"
+            "- Exercise: {{current_exercise}}\n"
+            "- Reps completed this set: {{reps_this_set}}\n"
+            "- Total reps this session: {{total_reps}}\n"
+            "- Time: {{time_context}}\n"
+            "- Times paused so far: {{pause_count}}\n"
+            "- Last form note: {{last_correction}}\n\n"
+            "Respond with a single brief (under 20 words) re-entry utterance that names the exercise "
+            "and current rep count. Do not say 'Welcome back' or anything generic. "
+            'Example: "You were doing push-ups — 8 reps in. 4 minutes left. Let\'s go."'
+        ),
+        "config": {"variables": ["current_exercise", "reps_this_set", "total_reps", "time_context", "pause_count", "last_correction"]},
+    },
+    {
         "name": "adaptive-block-request",
         "type": "text",
         "labels": ["production"],
