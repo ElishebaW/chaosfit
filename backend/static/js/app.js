@@ -692,6 +692,12 @@ function connectWebsocket() {
       return;
     }
 
+    if (adkEvent.type === "routine_plan_updated") {
+      const blocks = adkEvent.routine_plan?.blocks ?? [];
+      addConsoleEntry("incoming", `Schedule updated: ${blocks.length} blocks remaining`, adkEvent, "📋", "system");
+      return;
+    }
+
     if (adkEvent.type === "session_state") {
       const status = adkEvent.status;
       console.log(`Session state event: ${status}, stop button visible: ${stopSessionButton?.style?.display}`);

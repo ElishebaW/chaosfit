@@ -4,7 +4,9 @@ from .adaptive_scheduler import (
     ExerciseLibrary,
     NextBlock,
     load_exercise_library,
+    rebuild_remaining_plan,
     recommend_next_block,
+    should_reschedule,
 )
 from .time_mode_engine import (
     RoutineBlock,
@@ -21,7 +23,9 @@ __all__ = [
     "ExerciseLibrary",
     "NextBlock",
     "load_exercise_library",
+    "rebuild_remaining_plan",
     "recommend_next_block",
+    "should_reschedule",
     "RoutineBlock",
     "RoutinePlan",
     "RoutinePreferences",

@@ -310,6 +310,57 @@ def dump_library_summary(library: ExerciseLibrary) -> dict[str, Any]:
     }
 
 
+RESCHEDULE_DRIFT_THRESHOLD = 0.20
+
+
+def should_reschedule(
+    *,
+    routine_plan: dict[str, Any] | None,
+    time_remaining_sec: int | None,
+    current_block_index: int = 0,
+) -> bool:
+    """Return True when actual remaining time has drifted > 20% from the unstarted blocks' total time."""
+    if time_remaining_sec is None or not routine_plan:
+        return False
+    all_blocks = routine_plan.get("blocks") or []
+    blocks = all_blocks[current_block_index:]
+    plan_remaining_sec = sum(b.get("duration_sec", 0) for b in blocks)
+    if plan_remaining_sec == 0:
+        return False
+    drift = abs(plan_remaining_sec - time_remaining_sec) / plan_remaining_sec
+    return drift > RESCHEDULE_DRIFT_THRESHOLD
+
+
+def rebuild_remaining_plan(
+    routine_plan: dict[str, Any],
+    remaining_sec: int,
+    current_block_index: int = 0,
+) -> dict[str, Any]:
+    """Return a new plan built from unstarted blocks trimmed to fit remaining_sec. Cooldown is always last."""
+    all_blocks = list(routine_plan.get("blocks") or [])
+    blocks = all_blocks[current_block_index:]
+    cooldown = [b for b in blocks if b.get("mode") == "cooldown"]
+    main_blocks = [b for b in blocks if b.get("mode") != "cooldown"]
+
+    cooldown_sec = sum(b.get("duration_sec", 0) for b in cooldown)
+    budget = max(0, remaining_sec - cooldown_sec)
+
+    # Trim longest main blocks first until the remainder fits the budget
+    kept = list(main_blocks)
+    while kept and sum(b.get("duration_sec", 0) for b in kept) > budget:
+        longest = max(range(len(kept)), key=lambda i: kept[i].get("duration_sec", 0))
+        kept.pop(longest)
+
+    new_blocks = kept + cooldown
+    new_total = sum(b.get("duration_sec", 0) for b in new_blocks)
+    return {
+        **{k: v for k, v in routine_plan.items() if k != "blocks"},
+        "blocks": new_blocks,
+        "total_duration_sec": new_total,
+        "duration_minutes": round(new_total / 60) if new_total else None,
+    }
+
+
 if __name__ == "__main__":
     lib = load_exercise_library()
     print(json.dumps(dump_library_summary(lib), indent=2))

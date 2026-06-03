@@ -369,12 +369,37 @@ async def websocket_endpoint(
 
                 if event_type == "resume":
                     session_manager.resume_session(session_id)
+                    rescheduled = session_manager.maybe_reschedule(session_id, trigger="resume")
                     await send_session_state("resumed")
                     state = session_manager.get(session_id)
+                    if rescheduled:
+                        await safe_send_text(json.dumps({
+                            "type": "routine_plan_updated",
+                            "routine_plan": state.routine_plan,
+                        }))
+                        blocks_remaining = len((state.routine_plan or {}).get("blocks") or [])
+                        live_request_queue.send_content(types.Content(parts=[types.Part(
+                            text=f"Schedule updated: {blocks_remaining} blocks remaining. Continue from the current exercise."
+                        )]))
                     resume_text = _compile_resume_context(state.contextual_resume_summary())
                     live_request_queue.send_content(
                         types.Content(parts=[types.Part(text=resume_text)])
                     )
+                    continue
+
+                if event_type == "block_end":
+                    session_manager.advance_block(session_id)
+                    rescheduled = session_manager.maybe_reschedule(session_id, trigger="block-end")
+                    if rescheduled:
+                        state = session_manager.get(session_id)
+                        await safe_send_text(json.dumps({
+                            "type": "routine_plan_updated",
+                            "routine_plan": state.routine_plan,
+                        }))
+                        blocks_remaining = len((state.routine_plan or {}).get("blocks") or [])
+                        live_request_queue.send_content(types.Content(parts=[types.Part(
+                            text=f"Schedule updated: {blocks_remaining} blocks remaining. Continue from the current exercise."
+                        )]))
                     continue
 
                 if event_type == "ping":
