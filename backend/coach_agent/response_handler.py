@@ -260,3 +260,39 @@ def emit_exercise_data(text: str, session_id: str = "") -> dict[str, Any]:
 
 # Create the FunctionTool instance
 emit_exercise_data_tool = FunctionTool(emit_exercise_data)
+
+
+def report_fatigue(
+    fatigue_level: float,
+    confidence: str,
+    observed_cues: list[str],
+    session_id: str = "",
+) -> dict[str, Any]:
+    """Tool for the coach to report observed fatigue signals.
+
+    Call this when you observe: labored breathing audible in the mic,
+    3+ form corrections in the last 2 minutes, visibly slowed pace,
+    or form breakdown on consecutive reps.
+
+    Args:
+        fatigue_level: Estimated fatigue from 0.0 (fresh) to 1.0 (exhausted).
+        confidence: Confidence in the estimate — "low", "medium", or "high".
+        observed_cues: Specific cues seen, e.g. ["labored breathing", "hip sag worsening"].
+        session_id: Current session ID.
+    """
+    try:
+        clamped = max(0.0, min(1.0, float(fatigue_level)))
+    except (TypeError, ValueError):
+        logger.warning("report_fatigue received invalid fatigue_level: %r", fatigue_level)
+        return {"status": "error", "message": f"Invalid fatigue_level: {fatigue_level!r}"}
+    return {
+        "status": "success",
+        "type": "fatigue_update",
+        "fatigue_level": clamped,
+        "confidence": str(confidence),
+        "observed_cues": [str(c) for c in (observed_cues or [])],
+        "session_id": session_id,
+    }
+
+
+report_fatigue_tool = FunctionTool(report_fatigue)

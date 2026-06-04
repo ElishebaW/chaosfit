@@ -60,7 +60,15 @@ prompts = [
             "- Hip sag (hips below shoulder-to-ankle line) → 'lift your hips, keep a straight line'\n"
             "- Hip pike (hips above straight line) → 'lower your hips'\n"
             "- Head drop (head falls toward floor) → 'keep your head neutral'\n"
-            "- Shoulder wing (scapulae protrude visibly) → 'press the floor away, flatten your back'"
+            "- Shoulder wing (scapulae protrude visibly) → 'press the floor away, flatten your back'\n\n"
+            "FATIGUE DETECTION: Call report_fatigue(fatigue_level, confidence, observed_cues, session_id) "
+            "when you observe any of these signals:\n"
+            "- Breathing is audibly labored in the mic (not just heavy — strained)\n"
+            "- 3 or more form corrections in the last 2 minutes on the same exercise\n"
+            "- Pace has visibly slowed: reps taking noticeably longer than the first set\n"
+            "- Form breakdown on consecutive reps (e.g. hip sag getting worse each push-up)\n"
+            "Set fatigue_level 0.3–0.5 for early signs, 0.6–0.8 for clear fatigue, 0.9–1.0 for near-failure. "
+            "Set confidence to 'low' if only one cue is present, 'medium' for two, 'high' for three or more."
         ),
         "config": {"variables": ["goal"]},
     },
