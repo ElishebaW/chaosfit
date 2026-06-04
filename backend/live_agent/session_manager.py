@@ -54,6 +54,12 @@ def _trace_interruption(session_id: str, event_type: str, reason: str | None, pa
         return {"session_id": session_id, "event_type": event_type, "reason": reason, "pause_count": pause_count, "total_pause_time_seconds": total_pause_time_seconds}
 
 
+@observe(name="fatigue_update")
+def _trace_fatigue_update(session_id: str, fatigue_level: float, confidence: str, observed_cues: list[str]) -> dict[str, Any]:
+    with propagate_attributes(session_id=session_id):
+        return {"session_id": session_id, "fatigue_level": fatigue_level, "confidence": confidence, "observed_cues": observed_cues}
+
+
 @observe(name="adaptive_reschedule")
 def _trace_adaptive_reschedule(session_id: str, trigger: str, old_plan_duration_sec: int, new_plan_duration_sec: int, remaining_blocks: int) -> dict[str, Any]:
     with propagate_attributes(session_id=session_id):
@@ -199,6 +205,8 @@ class SessionManager:
         # Handle exercise_update events specifically
         if event_type == "exercise_update":
             self._process_exercise_update(state, payload)
+        elif event_type == "fatigue_update":
+            self._process_fatigue_update(state, payload)
         else:
             # Process other event types
             self._process_generic_event(state, payload)
@@ -339,6 +347,18 @@ class SessionManager:
             state.total_interruptions += 1
             state.coach_interruptions += 1
             logging.info(f"Coach interruption detected for session {state.session_id} (total: {state.total_interruptions}, coach: {state.coach_interruptions})")
+
+    def _process_fatigue_update(self, state: SessionState, payload: dict[str, Any]) -> None:
+        fatigue_level = _as_float(payload.get("fatigue_level"))
+        if fatigue_level is not None:
+            state.recent_fatigue = fatigue_level
+        confidence = str(payload.get("confidence", "unknown"))
+        observed_cues = list(payload.get("observed_cues") or [])
+        _trace_fatigue_update(state.session_id, fatigue_level or 0.0, confidence, observed_cues)
+        logging.info(
+            "Fatigue update session=%s level=%.2f confidence=%s cues=%s",
+            state.session_id, fatigue_level or 0.0, confidence, observed_cues,
+        )
 
     def complete_session(self, session_id: str) -> None:
         state = self.get(session_id)

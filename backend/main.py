@@ -125,34 +125,34 @@ def _compile_resume_context(context: dict[str, Any]) -> str:
 
 
 async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> None:
-    """Process coach tool responses for exercise data events."""
+    """Process coach tool responses for exercise data and fatigue events."""
     try:
-        # Check if this is an exercise data tool response
-        if hasattr(event, 'tool_response') and event.tool_response is not None:
-            response_data = event.tool_response
-            
-            # Parse the tool response to extract exercise event data
-            if isinstance(response_data, dict) and response_data.get("status") == "success":
-                event_data = response_data.get("event")
-                if event_data and isinstance(event_data, dict):
-                    # Always override with the correct session_id from the WebSocket context
-                    tool_session_id = event_data.get("session_id")
-                    event_data["session_id"] = session_id  # Override with actual session ID
-                    
-                    # Create exercise_update event for session manager
-                    session_manager.append_event(
-                        session_id=session_id,
-                        event_type="exercise_update",
-                        payload=event_data
-                    )
-                    logger.info(f"Processed coach exercise event for session {session_id}: {event_data}")
-                    
-                    # Log session ID mapping for debugging
-                    if tool_session_id and tool_session_id != session_id:
-                        logger.warning(f"Session ID mismatch - tool: {tool_session_id}, actual: {session_id} - corrected")
-                    
-                    if event_data.get("interruption"):
-                        logger.info(f"Coach tool interruption flag set for session {session_id}")
+        if not (hasattr(event, 'tool_response') and event.tool_response is not None):
+            return
+        response_data = event.tool_response
+        if not (isinstance(response_data, dict) and response_data.get("status") == "success"):
+            return
+
+        response_type = response_data.get("type")
+
+        if response_type == "fatigue_update":
+            payload = {**response_data, "session_id": session_id}
+            session_manager.append_event(session_id=session_id, event_type="fatigue_update", payload=payload)
+            logger.info("Processed fatigue_update for session %s level=%.2f confidence=%s",
+                        session_id, payload.get("fatigue_level", 0), payload.get("confidence"))
+            return
+
+        # emit_exercise_data response — event dict is nested under "event" key
+        event_data = response_data.get("event")
+        if event_data and isinstance(event_data, dict):
+            tool_session_id = event_data.get("session_id")
+            event_data["session_id"] = session_id
+            session_manager.append_event(session_id=session_id, event_type="exercise_update", payload=event_data)
+            logger.info(f"Processed coach exercise event for session {session_id}: {event_data}")
+            if tool_session_id and tool_session_id != session_id:
+                logger.warning(f"Session ID mismatch - tool: {tool_session_id}, actual: {session_id} - corrected")
+            if event_data.get("interruption"):
+                logger.info(f"Coach tool interruption flag set for session {session_id}")
     except Exception as e:
         logger.error(f"Failed to process coach tool event: {e}")
 
