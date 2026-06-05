@@ -428,3 +428,146 @@ class TestProcessCoachToolEventDifficulty:
         args = mgr.append_event.call_args
         event_type = args.kwargs.get("event_type") or args.args[1]
         assert event_type == "fatigue_update"
+
+    @pytest.mark.asyncio
+    async def test_returns_routine_plan_updated_when_blocks_mutated(self):
+        """_process_coach_tool_event must return a routine_plan_updated dict so the caller can notify the client."""
+        from backend.main import _process_coach_tool_event
+
+        plan = {
+            "blocks": [
+                {"name": "A", "mode": "main", "duration_sec": 60, "items": []},
+                {"name": "B", "mode": "main", "duration_sec": 60, "items": [
+                    {"exercise_id": "push_up", "prescription": {"type": "reps", "reps_min": 8, "reps_max": 12, "rest_seconds": 30}},
+                ]},
+            ]
+        }
+        state = _make_state(routine_plan=plan, current_block_index=0, status="active")
+        mgr = _make_manager()
+        mgr._mem["s1"] = state
+
+        fake_event = MagicMock()
+        fake_event.tool_response = {
+            "status": "success",
+            "type": "difficulty_adjustment",
+            "direction": "easier",
+            "reason": "struggling",
+            "session_id": "s1",
+        }
+
+        result = await _process_coach_tool_event(fake_event, "s1", mgr)
+
+        assert result is not None
+        assert result["type"] == "routine_plan_updated"
+        assert result["routine_plan"] is not None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_blocks_mutated(self):
+        """No client notification when there are no pending blocks to mutate."""
+        from backend.main import _process_coach_tool_event
+
+        state = _make_state(status="active")  # no routine_plan
+        mgr = _make_manager()
+        mgr._mem["s1"] = state
+
+        fake_event = MagicMock()
+        fake_event.tool_response = {
+            "status": "success",
+            "type": "difficulty_adjustment",
+            "direction": "easier",
+            "reason": "struggling",
+            "session_id": "s1",
+        }
+
+        result = await _process_coach_tool_event(fake_event, "s1", mgr)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Firestore persistence — _write_routine_plan
+# ---------------------------------------------------------------------------
+
+class TestWriteRoutinePlan:
+    def test_calls_firestore_set_with_routine_plan(self):
+        mock_fs = MagicMock()
+        mock_doc = MagicMock()
+        mock_fs.collection.return_value.document.return_value = mock_doc
+
+        with patch.dict("os.environ", {"ENABLE_FIRESTORE": "false"}):
+            mgr = _make_manager()
+        mgr._firestore = mock_fs
+
+        plan = {"blocks": [{"name": "A"}]}
+        state = _make_state(routine_plan=plan)
+        mgr._write_routine_plan(state)
+
+        mock_fs.collection.assert_called_once()
+        mock_doc.set.assert_called_once_with({"routine_plan": plan}, merge=True)
+
+    def test_skips_write_when_no_firestore(self):
+        with patch.dict("os.environ", {"ENABLE_FIRESTORE": "false"}):
+            mgr = _make_manager()
+        state = _make_state(routine_plan={"blocks": []})
+        mgr._write_routine_plan(state)  # must not raise
+
+    def test_skips_write_when_no_plan(self):
+        mock_fs = MagicMock()
+        with patch.dict("os.environ", {"ENABLE_FIRESTORE": "false"}):
+            mgr = _make_manager()
+        mgr._firestore = mock_fs
+        state = _make_state()  # no routine_plan
+        mgr._write_routine_plan(state)
+        mock_fs.collection.assert_not_called()
+
+    def test_apply_adjustment_calls_write_routine_plan(self):
+        """_apply_difficulty_adjustment must persist the plan after mutation."""
+        with patch.dict("os.environ", {"ENABLE_FIRESTORE": "false"}):
+            mgr = _make_manager()
+
+        plan = {
+            "blocks": [
+                {"name": "A", "mode": "main", "duration_sec": 60, "items": []},
+                {"name": "B", "mode": "main", "duration_sec": 60, "items": [
+                    {"exercise_id": "push_up", "prescription": {"type": "reps", "reps_min": 8, "reps_max": 12, "rest_seconds": 30}},
+                ]},
+            ]
+        }
+        state = _make_state(routine_plan=plan, current_block_index=0)
+
+        write_calls: list = []
+        mgr._write_routine_plan = lambda s: write_calls.append(s.session_id)  # type: ignore[method-assign]
+
+        mgr._apply_difficulty_adjustment(state, "easier", "test")
+        assert write_calls == ["test-session"]
+
+    def test_no_write_when_no_pending_blocks(self):
+        """No Firestore write when there are no blocks to mutate."""
+        with patch.dict("os.environ", {"ENABLE_FIRESTORE": "false"}):
+            mgr = _make_manager()
+
+        plan = {"blocks": [{"name": "A", "mode": "main", "duration_sec": 60, "items": []}]}
+        state = _make_state(routine_plan=plan, current_block_index=0)
+
+        write_calls: list = []
+        mgr._write_routine_plan = lambda s: write_calls.append(s.session_id)  # type: ignore[method-assign]
+
+        mgr._apply_difficulty_adjustment(state, "easier", "test")
+        assert write_calls == []
+
+
+# ---------------------------------------------------------------------------
+# _TOOL_SUFFIX always present in agent instruction
+# ---------------------------------------------------------------------------
+
+class TestAgentInstructionContainsToolGuidance:
+    def test_instruction_contains_adjust_difficulty(self):
+        from backend.coach_agent.agent import agent
+        assert "adjust_difficulty" in agent.instruction
+
+    def test_instruction_contains_emit_exercise_data(self):
+        from backend.coach_agent.agent import agent
+        assert "emit_exercise_data" in agent.instruction
+
+    def test_instruction_contains_report_fatigue(self):
+        from backend.coach_agent.agent import agent
+        assert "report_fatigue" in agent.instruction

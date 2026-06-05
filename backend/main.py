@@ -124,14 +124,17 @@ def _compile_resume_context(context: dict[str, Any]) -> str:
         )
 
 
-async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> None:
-    """Process coach tool responses for exercise data and fatigue events."""
+async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> dict | None:
+    """Process coach tool responses for exercise data and fatigue events.
+
+    Returns a dict to forward to the WebSocket client (e.g. routine_plan_updated), or None.
+    """
     try:
         if not (hasattr(event, 'tool_response') and event.tool_response is not None):
-            return
+            return None
         response_data = event.tool_response
         if not (isinstance(response_data, dict) and response_data.get("status") == "success"):
-            return
+            return None
 
         response_type = response_data.get("type")
 
@@ -140,14 +143,18 @@ async def _process_coach_tool_event(event: Any, session_id: str, session_manager
             session_manager.append_event(session_id=session_id, event_type="fatigue_update", payload=payload)
             logger.info("Processed fatigue_update for session %s level=%.2f confidence=%s",
                         session_id, payload.get("fatigue_level", 0), payload.get("confidence"))
-            return
+            return None
 
         if response_type == "difficulty_adjustment":
             payload = {**response_data, "session_id": session_id}
+            prev_ts = session_manager.get(session_id).last_difficulty_adjustment_at
             session_manager.append_event(session_id=session_id, event_type="difficulty_adjustment", payload=payload)
+            state = session_manager.get(session_id)
             logger.info("Processed difficulty_adjustment for session %s direction=%s",
                         session_id, response_data.get("direction"))
-            return
+            if state.last_difficulty_adjustment_at != prev_ts and state.routine_plan:
+                return {"type": "routine_plan_updated", "routine_plan": state.routine_plan}
+            return None
 
         # emit_exercise_data response — event dict is nested under "event" key
         event_data = response_data.get("event")
@@ -160,8 +167,10 @@ async def _process_coach_tool_event(event: Any, session_id: str, session_manager
                 logger.warning(f"Session ID mismatch - tool: {tool_session_id}, actual: {session_id} - corrected")
             if event_data.get("interruption"):
                 logger.info(f"Coach tool interruption flag set for session {session_id}")
+        return None
     except Exception as e:
         logger.error(f"Failed to process coach tool event: {e}")
+        return None
 
 
 _extract_end_summary = extract_end_summary
@@ -521,7 +530,9 @@ async def websocket_endpoint(
                 # Handle coach tool responses for exercise data
                 if hasattr(event, 'tool_response') and event.tool_response is not None:
                     logger.info(f"Coach tool response detected: {event.tool_response}")
-                    await _process_coach_tool_event(event, session_id, session_manager)
+                    plan_update = await _process_coach_tool_event(event, session_id, session_manager)
+                    if plan_update:
+                        await safe_send_text(json.dumps(plan_update))
                 else:
                     # Debug: check if event has any tool-related attributes
                     tool_attrs = {k: v for k, v in event.__dict__.items() if 'tool' in k.lower()}

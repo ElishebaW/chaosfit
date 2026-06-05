@@ -402,6 +402,7 @@ class SessionManager:
                     presc["rest_seconds"] = max(10, presc["rest_seconds"] + rest_delta)
         state.last_difficulty_adjustment_at = utc_now_iso()
         _trace_difficulty_adjustment(state.session_id, direction, trigger, rep_delta, rest_delta, len(pending))
+        self._write_routine_plan(state)
         logging.info(
             "adjust_difficulty session=%s direction=%s trigger=%s blocks_mutated=%d reason=%r",
             state.session_id, direction, trigger, len(pending), reason,
@@ -746,6 +747,17 @@ class SessionManager:
             logging.info(f"Session document upserted: {state.session_id}")
         except Exception as e:
             logging.error(f"Failed to upsert session document: {e}")
+
+    def _write_routine_plan(self, state: SessionState) -> None:
+        if not self._firestore or not state.routine_plan:
+            return
+        try:
+            self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(
+                {"routine_plan": state.routine_plan}, merge=True
+            )
+            logging.info("Routine plan persisted for session %s", state.session_id)
+        except Exception as e:
+            logging.error("Failed to persist routine_plan for session %s: %s", state.session_id, e)
 
     def _write_summary(self, summary: SessionSummary) -> None:
         if not self._firestore:

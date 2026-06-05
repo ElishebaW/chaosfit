@@ -36,7 +36,7 @@ _GOAL = os.getenv(
 coach_prompt = None
 try:
     coach_prompt = get_client().get_prompt("coach-system-instruction", label="production")
-    _instruction = coach_prompt.compile(goal=_GOAL)
+    _instruction = coach_prompt.compile(goal=_GOAL) + _TOOL_SUFFIX
 except Exception:
     _instruction = build_live_system_instruction(session_goal=_GOAL) + _TOOL_SUFFIX
 
