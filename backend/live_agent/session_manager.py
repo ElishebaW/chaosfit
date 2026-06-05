@@ -60,6 +60,19 @@ def _trace_fatigue_update(session_id: str, fatigue_level: float, confidence: str
         return {"session_id": session_id, "fatigue_level": fatigue_level, "confidence": confidence, "observed_cues": observed_cues}
 
 
+@observe(name="adjust_difficulty")
+def _trace_difficulty_adjustment(session_id: str, direction: str, trigger: str, rep_delta: int, rest_delta_sec: int, blocks_mutated: int) -> dict[str, Any]:
+    with propagate_attributes(session_id=session_id):
+        return {
+            "session_id": session_id,
+            "direction": direction,
+            "trigger": trigger,
+            "rep_delta": rep_delta,
+            "rest_delta_sec": rest_delta_sec,
+            "blocks_mutated": blocks_mutated,
+        }
+
+
 @observe(name="adaptive_reschedule")
 def _trace_adaptive_reschedule(session_id: str, trigger: str, old_plan_duration_sec: int, new_plan_duration_sec: int, remaining_blocks: int) -> dict[str, Any]:
     with propagate_attributes(session_id=session_id):
@@ -124,6 +137,7 @@ class SessionState:
     level: str | None = None
     routine_plan: dict[str, Any] | None = None
     current_block_index: int = 0
+    last_difficulty_adjustment_at: str | None = None
 
     def elapsed_active_sec(self) -> float:
         """Wall-clock seconds minus accumulated pause time."""
@@ -207,6 +221,8 @@ class SessionManager:
             self._process_exercise_update(state, payload)
         elif event_type == "fatigue_update":
             self._process_fatigue_update(state, payload)
+        elif event_type == "difficulty_adjustment":
+            self._process_difficulty_adjustment(state, payload)
         else:
             # Process other event types
             self._process_generic_event(state, payload)
@@ -229,6 +245,11 @@ class SessionManager:
             state.level = str(raw_level).strip() if raw_level is not None and str(raw_level).strip() else None
         if "routine_plan" in payload and isinstance(payload.get("routine_plan"), dict):
             state.routine_plan = payload.get("routine_plan")
+
+        # Passive signal check — runs after all payload mutations so fatigue/plan are current.
+        # Skip after explicit agent-triggered adjustments to avoid double-firing.
+        if event_type != "difficulty_adjustment":
+            self._maybe_auto_adjust_difficulty(session_id, state)
 
         if not self._firestore:
             logging.debug(f"Firestore disabled, skipping event write for session {session_id}")
@@ -347,6 +368,110 @@ class SessionManager:
             state.total_interruptions += 1
             state.coach_interruptions += 1
             logging.info(f"Coach interruption detected for session {state.session_id} (total: {state.total_interruptions}, coach: {state.coach_interruptions})")
+
+    def _apply_difficulty_adjustment(self, state: SessionState, direction: str, reason: str, trigger: str = "agent") -> dict[str, Any]:
+        """Mutate reps_min/reps_max and rest_seconds on all blocks after the current one."""
+        factor = 0.75 if direction == "easier" else 1.25
+        rest_delta = 15 if direction == "easier" else -15
+        if not state.routine_plan or not state.routine_plan.get("blocks"):
+            _trace_difficulty_adjustment(state.session_id, direction, trigger, 0, rest_delta, 0)
+            return {"mutated_blocks": 0, "direction": direction}
+        blocks = state.routine_plan["blocks"]
+        pending = blocks[state.current_block_index + 1:]
+        if not pending:
+            _trace_difficulty_adjustment(state.session_id, direction, trigger, 0, rest_delta, 0)
+            return {"mutated_blocks": 0, "direction": direction}
+        rep_delta = 0
+        rep_delta_captured = False
+        for block in pending:
+            for item in (block.get("items") or []):
+                presc = item.get("prescription")
+                if not isinstance(presc, dict):
+                    continue
+                if presc.get("type") == "reps":
+                    if "reps_min" in presc:
+                        presc["reps_min"] = max(1, round(presc["reps_min"] * factor))
+                    if "reps_max" in presc:
+                        old_max = presc["reps_max"]
+                        new_max = max(1, round(old_max * factor))
+                        if not rep_delta_captured:
+                            rep_delta = new_max - old_max
+                            rep_delta_captured = True
+                        presc["reps_max"] = new_max
+                if "rest_seconds" in presc:
+                    presc["rest_seconds"] = max(10, presc["rest_seconds"] + rest_delta)
+        state.last_difficulty_adjustment_at = utc_now_iso()
+        _trace_difficulty_adjustment(state.session_id, direction, trigger, rep_delta, rest_delta, len(pending))
+        self._write_routine_plan(state)
+        logging.info(
+            "adjust_difficulty session=%s direction=%s trigger=%s blocks_mutated=%d reason=%r",
+            state.session_id, direction, trigger, len(pending), reason,
+        )
+        return {"mutated_blocks": len(pending), "direction": direction, "reason": reason}
+
+    def _process_difficulty_adjustment(self, state: SessionState, payload: dict[str, Any]) -> None:
+        direction = str(payload.get("direction", ""))
+        reason = str(payload.get("reason", ""))
+        if direction not in ("easier", "harder"):
+            logging.warning("_process_difficulty_adjustment: invalid direction %r for session %s", direction, state.session_id)
+            return
+        self._apply_difficulty_adjustment(state, direction, reason, trigger="agent")
+
+    def _expected_reps_per_min(self, state: SessionState) -> float | None:
+        """Derive expected reps/min from the current block's reps prescriptions. Returns None if unavailable."""
+        if not state.routine_plan:
+            return None
+        blocks = state.routine_plan.get("blocks") or []
+        if state.current_block_index >= len(blocks):
+            return None
+        block = blocks[state.current_block_index]
+        duration_sec = block.get("duration_sec") or 0
+        if not duration_sec:
+            return None
+        total_expected = sum(
+            (p.get("reps_min", 0) + p.get("reps_max", 0)) / 2
+            for item in (block.get("items") or [])
+            for p in [item.get("prescription") or {}]
+            if p.get("type") == "reps"
+        )
+        return (total_expected / (duration_sec / 60.0)) if total_expected > 0 else None
+
+    def _check_difficulty_signal(self, state: SessionState) -> str | None:
+        """Return 'easier', 'harder', or None based on passive performance signals."""
+        # Fatigue-based: immediate trigger regardless of elapsed time
+        if state.recent_fatigue is not None and state.recent_fatigue >= 0.7:
+            return "easier"
+        elapsed_sec = state.elapsed_active_sec()
+        if elapsed_sec < 60:
+            return None
+        elapsed_min = elapsed_sec / 60.0
+        # High correction rate over at least 2 minutes → ease off
+        if elapsed_min >= 2.0 and len(state.form_corrections) / elapsed_min > 2.0:
+            return "easier"
+        # Ahead of expected rep pace with no corrections → push harder
+        expected_rpm = self._expected_reps_per_min(state)
+        if expected_rpm is not None:
+            actual_rpm = state.cumulative_rep_count / elapsed_min
+            if actual_rpm > expected_rpm * 1.5 and len(state.form_corrections) == 0:
+                return "harder"
+        return None
+
+    def _maybe_auto_adjust_difficulty(self, session_id: str, state: SessionState) -> None:
+        """Fire a server-side passive difficulty adjustment if signals warrant it."""
+        if state.status != "active":
+            return
+        # Cooldown guard: don't auto-adjust more often than every 90 seconds
+        if state.last_difficulty_adjustment_at:
+            if _elapsed_seconds(state.last_difficulty_adjustment_at) < 90:
+                return
+        direction = self._check_difficulty_signal(state)
+        if direction is None:
+            return
+        result = self._apply_difficulty_adjustment(state, direction, reason="server_passive_signal", trigger="server")
+        logging.info(
+            "Passive difficulty adjustment session=%s direction=%s blocks_mutated=%d",
+            session_id, direction, result.get("mutated_blocks", 0),
+        )
 
     def _process_fatigue_update(self, state: SessionState, payload: dict[str, Any]) -> None:
         fatigue_level = _as_float(payload.get("fatigue_level"))
@@ -622,6 +747,17 @@ class SessionManager:
             logging.info(f"Session document upserted: {state.session_id}")
         except Exception as e:
             logging.error(f"Failed to upsert session document: {e}")
+
+    def _write_routine_plan(self, state: SessionState) -> None:
+        if not self._firestore or not state.routine_plan:
+            return
+        try:
+            self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(
+                {"routine_plan": state.routine_plan}, merge=True
+            )
+            logging.info("Routine plan persisted for session %s", state.session_id)
+        except Exception as e:
+            logging.error("Failed to persist routine_plan for session %s: %s", state.session_id, e)
 
     def _write_summary(self, summary: SessionSummary) -> None:
         if not self._firestore:
