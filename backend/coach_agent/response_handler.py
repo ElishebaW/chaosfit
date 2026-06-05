@@ -296,3 +296,34 @@ def report_fatigue(
 
 
 report_fatigue_tool = FunctionTool(report_fatigue)
+
+
+def adjust_difficulty(
+    direction: str,
+    reason: str,
+    session_id: str = "",
+) -> dict[str, Any]:
+    """Tool for the coach to request a difficulty adjustment for remaining blocks.
+
+    Call this when the user is clearly breezing through (ahead of pace, asking for more,
+    no form corrections) or clearly struggling (pace slowing, form breaking down, high
+    correction rate). Do not call if you already called report_fatigue in the last 60
+    seconds — fatigue is handled separately.
+
+    Args:
+        direction: "easier" to reduce reps and extend rest, "harder" to increase reps and shorten rest.
+        reason: One-sentence observation, e.g. "User completed 15 reps with no struggle and asked for more".
+        session_id: Current session ID.
+    """
+    if direction not in ("easier", "harder"):
+        return {"status": "error", "message": f"direction must be 'easier' or 'harder', got {direction!r}"}
+    return {
+        "status": "success",
+        "type": "difficulty_adjustment",
+        "direction": direction,
+        "reason": str(reason),
+        "session_id": session_id,
+    }
+
+
+adjust_difficulty_tool = FunctionTool(adjust_difficulty)

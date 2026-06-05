@@ -142,6 +142,13 @@ async def _process_coach_tool_event(event: Any, session_id: str, session_manager
                         session_id, payload.get("fatigue_level", 0), payload.get("confidence"))
             return
 
+        if response_type == "difficulty_adjustment":
+            payload = {**response_data, "session_id": session_id}
+            session_manager.append_event(session_id=session_id, event_type="difficulty_adjustment", payload=payload)
+            logger.info("Processed difficulty_adjustment for session %s direction=%s",
+                        session_id, response_data.get("direction"))
+            return
+
         # emit_exercise_data response — event dict is nested under "event" key
         event_data = response_data.get("event")
         if event_data and isinstance(event_data, dict):

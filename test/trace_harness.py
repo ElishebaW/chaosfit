@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Trace harness — Phase 1 Group 3/4.
+Trace harness.
 
 Drives WebSocket sessions against the running server to generate Langfuse trace data
-and assert correctness of two key behaviors:
+and assert correctness of key behaviors:
   1. Session summary is present and complete (exercise_type, rep_count non-null).
   2. Coach is ready (session_state:active) before sending any model content.
+  3. Passive difficulty adjustment fires and produces an adjust_difficulty span.
 
 This is NOT a CI test. Run it manually against a running server.
 
@@ -23,6 +24,7 @@ Scenarios:
     clean_session             — normal session, 5 frames, one exercise, clean end
     session_with_interruption — pause mid-session, resume, then end
     misidentified_exercise    — exercise_update claims a different exercise than context implies
+    difficulty_adjustment     — sends high-fatigue signal to trigger passive difficulty adjustment
 """
 from __future__ import annotations
 
@@ -153,10 +155,74 @@ async def _scenario_misidentified_exercise(ws: Any, _session_id: str) -> None:
     }))
 
 
+_DIFFICULTY_ROUTINE_PLAN: dict[str, Any] = {
+    "blocks": [
+        {
+            "name": "Main",
+            "mode": "main",
+            "duration_sec": 120,
+            "items": [
+                {
+                    "exercise_id": "push_up",
+                    "prescription": {"type": "reps", "reps_min": 8, "reps_max": 12, "rest_seconds": 30},
+                    "coaching_hint": "keep core tight",
+                },
+            ],
+        },
+        {
+            "name": "Cooldown",
+            "mode": "cooldown",
+            "duration_sec": 60,
+            "items": [
+                {
+                    "exercise_id": "plank",
+                    "prescription": {"type": "time", "seconds": 30, "rest_seconds": 15},
+                    "coaching_hint": "breathe steadily",
+                },
+            ],
+        },
+    ]
+}
+
+
+async def _scenario_difficulty_adjustment(ws: Any, _session_id: str) -> None:
+    """Trigger passive difficulty adjustment via high-fatigue signal.
+
+    Step 1: sends a routine plan so there are pending blocks to mutate.
+    Step 2: sends fatigue=0.85 — the server's passive signal check fires "easier"
+            *after* fatigue is written to state, producing an adjust_difficulty Langfuse span.
+    """
+    # Step 1: load routine plan (current_block_index=0, so block 1 is pending)
+    await ws.send(json.dumps({
+        "type": "exercise_update",
+        "routine_plan": _DIFFICULTY_ROUTINE_PLAN,
+        "exercise_id": "push_up",
+        "rep_count": 3,
+    }))
+    await asyncio.sleep(0.3)
+
+    # Step 2: high fatigue — triggers "easier" passive signal
+    await ws.send(json.dumps({
+        "type": "exercise_update",
+        "fatigue": 0.85,
+        "rep_count": 2,
+        "exercise_id": "push_up",
+    }))
+    await asyncio.sleep(0.5)
+
+    await ws.send(json.dumps({
+        "type": "end",
+        "exercise_type": "push_up",
+        "rep_count": 5,
+        "session_goal": "trace-harness: difficulty_adjustment",
+    }))
+
+
 _SCENARIOS: dict[str, Any] = {
     "clean_session": _scenario_clean_session,
     "session_with_interruption": _scenario_session_with_interruption,
     "misidentified_exercise": _scenario_misidentified_exercise,
+    "difficulty_adjustment": _scenario_difficulty_adjustment,
 }
 
 
@@ -263,6 +329,38 @@ def _langfuse_rest(path: str, params: dict | None = None) -> dict:
     r = httpx.get(f"{base}{path}", params=params or {}, auth=auth, timeout=15)
     r.raise_for_status()
     return r.json()
+
+
+async def _check_langfuse_difficulty_adjustments(successful: list[tuple[str, str]]) -> list[str]:
+    """Assert that adjust_difficulty observations exist for difficulty_adjustment scenarios."""
+    failures: list[str] = []
+    relevant = [(sc, sid) for sc, sid in successful if sc == "difficulty_adjustment"]
+    if not relevant:
+        return failures
+    if not os.getenv("LANGFUSE_PUBLIC_KEY") or not os.getenv("LANGFUSE_SECRET_KEY"):
+        failures.append("LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set — skipping difficulty check")
+        return failures
+    for scenario, session_id in relevant:
+        label = f"[{scenario}/{session_id[:16]}]"
+        try:
+            obs = _langfuse_rest(
+                "/api/public/observations",
+                {"sessionId": session_id, "name": "adjust_difficulty", "limit": 1},
+            )
+            if not obs.get("data"):
+                failures.append(
+                    f"{label} adjust_difficulty: no adjust_difficulty observation in Langfuse "
+                    "(passive signal may not have fired — check server logs)"
+                )
+                continue
+            output = obs["data"][0].get("output") or {}
+            if not output.get("direction"):
+                failures.append(f"{label} adjust_difficulty: direction missing from span output")
+            if not output.get("trigger"):
+                failures.append(f"{label} adjust_difficulty: trigger missing from span output")
+        except Exception as exc:
+            failures.append(f"{label} Langfuse REST query failed: {exc}")
+    return failures
 
 
 async def _check_langfuse_summaries(successful: list[tuple[str, str]]) -> list[str]:
@@ -426,7 +524,16 @@ async def main() -> None:
     else:
         print(f"  All {len(successful)} session summaries look complete in Langfuse.")
 
-    total_failures = ws_assert_failed + ws_errored + len(lf_failures)
+    print("Checking Langfuse difficulty-adjustment spans ...")
+    diff_failures = await _check_langfuse_difficulty_adjustments(successful)
+    if diff_failures:
+        print(f"  {len(diff_failures)} difficulty-adjustment assertion(s) failed:")
+        for f in diff_failures:
+            print(f"    ! {f}")
+    elif any(sc == "difficulty_adjustment" for sc, _ in successful):
+        print(f"  adjust_difficulty spans confirmed in Langfuse.")
+
+    total_failures = ws_assert_failed + ws_errored + len(lf_failures) + len(diff_failures)
     print(f"\n{'ALL CHECKS PASSED' if total_failures == 0 else f'{total_failures} check(s) failed — see above'}")
     print("Check https://us.cloud.langfuse.com for full traces.")
 

@@ -8,7 +8,7 @@ from google.adk.agents import Agent
 from langfuse import get_client
 
 from backend.live_agent.form_feedback_prompt import build_live_system_instruction
-from backend.coach_agent.response_handler import emit_exercise_data_tool, report_fatigue_tool
+from backend.coach_agent.response_handler import adjust_difficulty_tool, emit_exercise_data_tool, report_fatigue_tool
 
 _TOOL_SUFFIX = (
     "\n\nCRITICAL: ALWAYS call emit_exercise_data tool with session_id for ANY coaching feedback. "
@@ -19,7 +19,13 @@ _TOOL_SUFFIX = (
     "FATIGUE DETECTION: Call report_fatigue(fatigue_level, confidence, observed_cues, session_id) "
     "when you observe: labored breathing audible in the mic, 3+ form corrections in the last 2 minutes, "
     "visibly slowed pace, or form breakdown on consecutive reps. "
-    "Set fatigue_level 0.3–0.5 for early signs, 0.6–0.8 for clear fatigue, 0.9–1.0 for near-failure."
+    "Set fatigue_level 0.3–0.5 for early signs, 0.6–0.8 for clear fatigue, 0.9–1.0 for near-failure.\n\n"
+    "DIFFICULTY ADJUSTMENT: Call adjust_difficulty(direction, reason, session_id) to modify upcoming "
+    "blocks when the user's effort level clearly mismatches the plan. "
+    "Use direction='easier' when reps are completed well ahead of pace with no corrections and the user "
+    "signals they want more challenge — wait until the end of a set, not mid-rep. "
+    "Use direction='harder' when pace is slowing, form is breaking down, or the user explicitly asks to "
+    "ease off. Do not call within 60 seconds of a previous adjust_difficulty call."
 )
 
 _GOAL = os.getenv(
@@ -38,5 +44,5 @@ agent = Agent(
     name="chaosfit_live_coach",
     model=os.getenv("DEMO_AGENT_MODEL", "gemini-2.5-flash-live-001"),
     instruction=_instruction,
-    tools=[emit_exercise_data_tool, report_fatigue_tool],
+    tools=[emit_exercise_data_tool, report_fatigue_tool, adjust_difficulty_tool],
 )

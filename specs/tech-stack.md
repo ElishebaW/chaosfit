@@ -9,7 +9,9 @@ This document describes the current, locked technology choices for ChaosFit. Cha
 | Language | Python 3.11+ | ADK and Gemini SDK are Python-native |
 | Web framework | FastAPI | Async WebSocket support, minimal overhead |
 | AI runtime | Google ADK (Application Development Kit) | Manages Gemini Live API session lifecycle |
-| AI model | Gemini Live API (`gemini-2.5-flash-native-audio-preview`) | Native multimodal audio + video, real-time streaming |
+| AI model — live coach | Gemini Live API (`gemini-2.5-flash-live-001`) | Native multimodal audio + video, real-time streaming |
+| AI model — block planner | `gemini-2.5-flash` (env: `NEXT_BLOCK_MODEL`) | Generates the next workout block as structured JSON |
+| AI model — session summary | `gemini-2.5-flash` (env: `SUMMARY_MODEL`) | Produces the post-session summary from trace data |
 | Package manager | uv | Fast dependency resolution, lockfile support |
 | ASGI server | Uvicorn | Production-grade, pairs with FastAPI |
 
@@ -40,8 +42,23 @@ This document describes the current, locked technology choices for ChaosFit. Cha
 
 | Component | Choice | Why |
 |-----------|--------|-----|
-| Agent tracing | LangSmith | Trace ADK/Gemini calls, build eval datasets, run regressions in CI |
+| Agent tracing | Langfuse | Trace ADK/Gemini calls, build eval datasets, run regressions in CI |
 | Latency telemetry | Client-side RTT (WebSocket) | Measure frame-to-coaching round-trip; surface degradation to user |
+| Integration harness | `test/trace_harness.py` | Drives live WebSocket sessions and asserts Langfuse spans are produced; validates the observability pipeline that AI evals depend on |
+
+### Two layers of quality tooling
+
+These are distinct and both necessary:
+
+**1. Trace harness (`test/trace_harness.py`) — pipeline integrity, not model quality**
+
+Connects to a running server, drives scripted workout scenarios over WebSocket, and queries Langfuse to confirm the expected spans were written. It does *not* evaluate whether the coach said the right thing — it verifies that the instrumentation plumbing is working so that real session data actually reaches Langfuse. If the harness fails, AI evals will silently run on missing or corrupt data.
+
+Current scenarios: `clean_session`, `session_with_interruption`, `misidentified_exercise`, `difficulty_adjustment`. Each targets a specific integration failure mode (e.g. `difficulty_adjustment` validates the full passive-inference pipeline: event → `_maybe_auto_adjust_difficulty` → `_apply_difficulty_adjustment` → Langfuse span).
+
+**2. Langfuse evals in CI — model quality**
+
+The AI quality harness: Langfuse eval datasets built from observed session traces are run in CI against any PR that touches agent logic. Evaluators check coaching accuracy (rep counting, form correction specificity, interruption handling). This is what improves model behavior — the trace harness just ensures the eval data pipeline is intact so these evals are trustworthy.
 
 ## Constraints & Guardrails
 
