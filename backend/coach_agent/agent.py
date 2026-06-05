@@ -22,9 +22,9 @@ _TOOL_SUFFIX = (
     "Set fatigue_level 0.3–0.5 for early signs, 0.6–0.8 for clear fatigue, 0.9–1.0 for near-failure.\n\n"
     "DIFFICULTY ADJUSTMENT: Call adjust_difficulty(direction, reason, session_id) to modify upcoming "
     "blocks when the user's effort level clearly mismatches the plan. "
-    "Use direction='easier' when reps are completed well ahead of pace with no corrections and the user "
+    "Use direction='harder' when reps are completed well ahead of pace with no corrections and the user "
     "signals they want more challenge — wait until the end of a set, not mid-rep. "
-    "Use direction='harder' when pace is slowing, form is breaking down, or the user explicitly asks to "
+    "Use direction='easier' when pace is slowing, form is breaking down, or the user explicitly asks to "
     "ease off. Do not call within 60 seconds of a previous adjust_difficulty call."
 )
 
