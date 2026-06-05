@@ -531,7 +531,7 @@ async def main() -> None:
         for f in diff_failures:
             print(f"    ! {f}")
     elif any(sc == "difficulty_adjustment" for sc, _ in successful):
-        print(f"  adjust_difficulty spans confirmed in Langfuse.")
+        print("  adjust_difficulty spans confirmed in Langfuse.")
 
     total_failures = ws_assert_failed + ws_errored + len(lf_failures) + len(diff_failures)
     print(f"\n{'ALL CHECKS PASSED' if total_failures == 0 else f'{total_failures} check(s) failed — see above'}")
