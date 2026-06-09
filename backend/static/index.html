@@ -46,6 +46,9 @@
         </div>
       </div>
       
+      <!-- Form-cue overlay canvas -->
+      <canvas id="formCueCanvas" class="form-cue-canvas" aria-hidden="true"></canvas>
+
       <!-- Session Status - Top Center -->
       <div class="session-status-hud">
         <span id="sessionStatus" class="status-text">● OFFLINE</span>
@@ -107,6 +110,52 @@
     </div>
 
     <!-- Hidden Elements -->
+    <!-- Pre-session Setup Overlay -->
+    <div id="setupOverlay" class="setup-overlay" aria-modal="true" role="dialog" aria-label="Session setup">
+      <div class="setup-card">
+        <div class="setup-header">
+          <h1 class="setup-title">CHAOSFIT</h1>
+          <p class="setup-subtitle">Build your session</p>
+        </div>
+        <form id="setupForm" class="setup-form" novalidate>
+
+          <div class="setup-field">
+            <label class="setup-label" for="goalInput">What's your goal today?</label>
+            <input type="text" id="goalInput" class="setup-input" placeholder="e.g. quick cardio, build strength" maxlength="80" autocomplete="off">
+          </div>
+
+          <div class="setup-field">
+            <label class="setup-label">How long do you have? <span id="durationDisplay" class="setup-value">20</span> min</label>
+            <input type="range" id="durationInput" class="setup-range" min="5" max="60" step="5" value="20">
+            <div class="setup-range-labels"><span>5 min</span><span>60 min</span></div>
+          </div>
+
+          <div class="setup-field">
+            <label class="setup-label">Available space?</label>
+            <div class="setup-options" id="spaceOptions">
+              <button type="button" class="setup-option-btn" data-value="small">Tight spot</button>
+              <button type="button" class="setup-option-btn active" data-value="medium">Bedroom</button>
+              <button type="button" class="setup-option-btn" data-value="full">Full room</button>
+            </div>
+          </div>
+
+          <div class="setup-field">
+            <label class="setup-label">How are you feeling? <span id="energyLabel" class="setup-value">Neutral</span></label>
+            <div class="setup-options" id="energyOptions">
+              <button type="button" class="setup-energy-btn" data-value="1">1</button>
+              <button type="button" class="setup-energy-btn" data-value="2">2</button>
+              <button type="button" class="setup-energy-btn active" data-value="3">3</button>
+              <button type="button" class="setup-energy-btn" data-value="4">4</button>
+              <button type="button" class="setup-energy-btn" data-value="5">5</button>
+            </div>
+            <div class="setup-range-labels"><span>Exhausted</span><span>Energized</span></div>
+          </div>
+
+          <button type="submit" id="setupSubmitBtn" class="setup-submit-btn" disabled>LET'S GO</button>
+        </form>
+      </div>
+    </div>
+
     <div id="latencyWarningBanner" class="latency-warning-banner hidden"></div>
     <div id="interruptionBanner" class="interruption-banner hidden">
       Safety correction issued. Coach interrupted for immediate feedback.

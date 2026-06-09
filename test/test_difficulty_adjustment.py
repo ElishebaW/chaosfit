@@ -382,17 +382,30 @@ class TestProcessCoachToolEventDifficulty:
             "session_id": "s1",
         }
 
-        mgr = MagicMock()
-        await _process_coach_tool_event(fake_event, "s1", mgr)
+        mgr = _make_manager()
+        mgr._mem["s1"] = _make_state(status="active")
 
-        mgr.append_event.assert_called_once()
-        args = mgr.append_event.call_args
-        event_type = args.kwargs.get("event_type") or args.args[1]
-        assert event_type == "difficulty_adjustment"
+        results = await _process_coach_tool_event(fake_event, "s1", mgr)
+        assert isinstance(results, list)
+        # direction_adjustment with no pending blocks → empty list (no plan update)
+        assert results == []
 
     @pytest.mark.asyncio
-    async def test_direction_forwarded_in_payload(self):
+    async def test_direction_forwarded_updates_state(self):
+        """Agent-triggered harder adjustment mutates pending blocks."""
         from backend.main import _process_coach_tool_event
+
+        plan = {
+            "blocks": [
+                {"name": "A", "mode": "main", "duration_sec": 60, "items": []},
+                {"name": "B", "mode": "main", "duration_sec": 60, "items": [
+                    {"exercise_id": "push_up", "prescription": {"type": "reps", "reps_min": 8, "reps_max": 12, "rest_seconds": 30}},
+                ]},
+            ]
+        }
+        state = _make_state(routine_plan=plan, current_block_index=0, status="active")
+        mgr = _make_manager()
+        mgr._mem["s1"] = state
 
         fake_event = MagicMock()
         fake_event.tool_response = {
@@ -403,11 +416,9 @@ class TestProcessCoachToolEventDifficulty:
             "session_id": "s1",
         }
 
-        mgr = MagicMock()
-        await _process_coach_tool_event(fake_event, "s1", mgr)
-
-        payload = mgr.append_event.call_args.kwargs.get("payload") or mgr.append_event.call_args.args[2]
-        assert payload["direction"] == "harder"
+        results = await _process_coach_tool_event(fake_event, "s1", mgr)
+        assert any(r["type"] == "routine_plan_updated" for r in results)
+        assert plan["blocks"][1]["items"][0]["prescription"]["reps_max"] == max(1, round(12 * 1.25))
 
     @pytest.mark.asyncio
     async def test_fatigue_update_still_routes_correctly(self):
@@ -422,16 +433,15 @@ class TestProcessCoachToolEventDifficulty:
             "observed_cues": [],
         }
 
-        mgr = MagicMock()
-        await _process_coach_tool_event(fake_event, "s1", mgr)
-
-        args = mgr.append_event.call_args
-        event_type = args.kwargs.get("event_type") or args.args[1]
-        assert event_type == "fatigue_update"
+        mgr = _make_manager()
+        mgr._mem["s1"] = _make_state(status="active")
+        results = await _process_coach_tool_event(fake_event, "s1", mgr)
+        # fatigue_update returns empty list (no client notification needed)
+        assert results == []
 
     @pytest.mark.asyncio
     async def test_returns_routine_plan_updated_when_blocks_mutated(self):
-        """_process_coach_tool_event must return a routine_plan_updated dict so the caller can notify the client."""
+        """_process_coach_tool_event must include routine_plan_updated so the caller can notify the client."""
         from backend.main import _process_coach_tool_event
 
         plan = {
@@ -455,14 +465,15 @@ class TestProcessCoachToolEventDifficulty:
             "session_id": "s1",
         }
 
-        result = await _process_coach_tool_event(fake_event, "s1", mgr)
+        results = await _process_coach_tool_event(fake_event, "s1", mgr)
 
-        assert result is not None
-        assert result["type"] == "routine_plan_updated"
-        assert result["routine_plan"] is not None
+        assert isinstance(results, list)
+        assert any(r["type"] == "routine_plan_updated" for r in results)
+        plan_msg = next(r for r in results if r["type"] == "routine_plan_updated")
+        assert plan_msg["routine_plan"] is not None
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_no_blocks_mutated(self):
+    async def test_returns_empty_when_no_blocks_mutated(self):
         """No client notification when there are no pending blocks to mutate."""
         from backend.main import _process_coach_tool_event
 
@@ -479,8 +490,8 @@ class TestProcessCoachToolEventDifficulty:
             "session_id": "s1",
         }
 
-        result = await _process_coach_tool_event(fake_event, "s1", mgr)
-        assert result is None
+        results = await _process_coach_tool_event(fake_event, "s1", mgr)
+        assert results == []
 
 
 # ---------------------------------------------------------------------------

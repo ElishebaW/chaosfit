@@ -124,17 +124,18 @@ def _compile_resume_context(context: dict[str, Any]) -> str:
         )
 
 
-async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> dict | None:
+async def _process_coach_tool_event(event: Any, session_id: str, session_manager: SessionManager) -> list[dict]:
     """Process coach tool responses for exercise data and fatigue events.
 
-    Returns a dict to forward to the WebSocket client (e.g. routine_plan_updated), or None.
+    Returns a list of dicts to forward to the WebSocket client in order.
+    Empty list means nothing to send.
     """
     try:
         if not (hasattr(event, 'tool_response') and event.tool_response is not None):
-            return None
+            return []
         response_data = event.tool_response
         if not (isinstance(response_data, dict) and response_data.get("status") == "success"):
-            return None
+            return []
 
         response_type = response_data.get("type")
 
@@ -143,7 +144,7 @@ async def _process_coach_tool_event(event: Any, session_id: str, session_manager
             session_manager.append_event(session_id=session_id, event_type="fatigue_update", payload=payload)
             logger.info("Processed fatigue_update for session %s level=%.2f confidence=%s",
                         session_id, payload.get("fatigue_level", 0), payload.get("confidence"))
-            return None
+            return []
 
         if response_type == "difficulty_adjustment":
             payload = {**response_data, "session_id": session_id}
@@ -153,24 +154,38 @@ async def _process_coach_tool_event(event: Any, session_id: str, session_manager
             logger.info("Processed difficulty_adjustment for session %s direction=%s",
                         session_id, response_data.get("direction"))
             if state.last_difficulty_adjustment_at != prev_ts and state.routine_plan:
-                return {"type": "routine_plan_updated", "routine_plan": state.routine_plan}
-            return None
+                return [{"type": "routine_plan_updated", "routine_plan": state.routine_plan}]
+            return []
 
         # emit_exercise_data response — event dict is nested under "event" key
         event_data = response_data.get("event")
         if event_data and isinstance(event_data, dict):
             tool_session_id = event_data.get("session_id")
             event_data["session_id"] = session_id
+            prev_ts = session_manager.get(session_id).last_difficulty_adjustment_at
             session_manager.append_event(session_id=session_id, event_type="exercise_update", payload=event_data)
+            state = session_manager.get(session_id)
             logger.info(f"Processed coach exercise event for session {session_id}: {event_data}")
             if tool_session_id and tool_session_id != session_id:
                 logger.warning(f"Session ID mismatch - tool: {tool_session_id}, actual: {session_id} - corrected")
             if event_data.get("interruption"):
                 logger.info(f"Coach tool interruption flag set for session {session_id}")
-        return None
+            messages: list[dict] = []
+            corrections = event_data.get("form_corrections")
+            if corrections:
+                messages.append({
+                    "type": "form_correction",
+                    "corrections": corrections,
+                    "exercise": event_data.get("exercise_type") or event_data.get("exercise_id"),
+                })
+            # Passive difficulty adjustment may have fired inside append_event
+            if state.last_difficulty_adjustment_at != prev_ts and state.routine_plan:
+                messages.append({"type": "routine_plan_updated", "routine_plan": state.routine_plan})
+            return messages
+        return []
     except Exception as e:
         logger.error(f"Failed to process coach tool event: {e}")
-        return None
+        return []
 
 
 _extract_end_summary = extract_end_summary
@@ -195,15 +210,44 @@ async def favicon() -> Response:
     return Response(status_code=204)
 
 
+def _in_memory_report(session_id: str, state: Any) -> dict[str, Any]:
+    """Build a minimal report payload from in-memory SessionState (Firestore-off fallback)."""
+    from backend.live_agent.session_manager import SessionState
+    s: SessionState = state
+    return {
+        "session_id": session_id,
+        "user_id": s.parent_id,
+        "rep_count": s.cumulative_rep_count,
+        "exercise_type": s.current_exercise,
+        "form_corrections": list(s.form_corrections),
+        "user_speech_interruptions": 0,
+        "pause_count": s.pause_count,
+        "total_pause_time_seconds": s.total_pause_time_seconds,
+        "session_goal": s.session_goal,
+        "started_at": s.started_at,
+        "ended_at": s.ended_at,
+        "session_duration_sec": None,
+        "summary_text": None,
+        "motivational_closing_line": "Good work. Show up tomorrow.",
+        "text_report": None,
+        "details": {},
+    }
+
+
 @app.get("/reports/session/{session_id}")
 async def session_report(session_id: str) -> dict[str, Any]:
     client = session_manager.get_firestore_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Firestore is not configured")
-    report = SessionReportGenerator(client).to_payload(session_id)
-    if not report:
-        raise HTTPException(status_code=404, detail="Session summary not found")
-    return report
+    if client:
+        report = SessionReportGenerator(client).to_payload(session_id)
+        if report:
+            return report
+    # Firestore unavailable or report not yet written — fall back to in-memory state
+    try:
+        state = session_manager.get(session_id)
+        return _in_memory_report(session_id, state)
+    except KeyError:
+        pass
+    raise HTTPException(status_code=404, detail="Session summary not found")
 
 
 @app.post("/test-exercise-event/{session_id}")
@@ -377,6 +421,32 @@ async def websocket_endpoint(
                     logging.warning("Missing event type in payload")
                     continue
 
+                if event_type == "session_config":
+                    session_manager.append_event(
+                        session_id=session_id,
+                        event_type="session_config",
+                        payload=payload,
+                    )
+                    goal = str(payload.get("goal") or "").strip()
+                    duration = int(payload.get("duration_minutes") or 20)
+                    space = str(payload.get("space") or "")
+                    energy = int(payload.get("energy_level") or 3)
+                    parts = [
+                        f"Session goal: {goal}." if goal else "General workout session.",
+                        f"Duration: {duration} minutes.",
+                    ]
+                    if space:
+                        space_desc = {"small": "tight space (no jumping)", "medium": "bedroom-sized", "full": "full room"}.get(space, space)
+                        parts.append(f"Available space: {space_desc}.")
+                    if energy <= 2:
+                        parts.append(f"User energy is low ({energy}/5) — keep intensity moderate and watch for fatigue.")
+                    elif energy >= 4:
+                        parts.append(f"User energy is high ({energy}/5) — they're ready to push.")
+                    parts.append("Begin when the user is ready.")
+                    live_request_queue.send_content(types.Content(parts=[types.Part(text=" ".join(parts))]))
+                    logger.info("session_config applied session=%s goal=%r duration=%d energy=%d", session_id, goal, duration, energy)
+                    continue
+
                 if event_type == "pause":
                     reason = str(payload.get("reason", "manual_pause"))
                     session_manager.pause_session(session_id, reason=reason)
@@ -530,9 +600,8 @@ async def websocket_endpoint(
                 # Handle coach tool responses for exercise data
                 if hasattr(event, 'tool_response') and event.tool_response is not None:
                     logger.info(f"Coach tool response detected: {event.tool_response}")
-                    plan_update = await _process_coach_tool_event(event, session_id, session_manager)
-                    if plan_update:
-                        await safe_send_text(json.dumps(plan_update))
+                    for client_msg in await _process_coach_tool_event(event, session_id, session_manager):
+                        await safe_send_text(json.dumps(client_msg))
                 else:
                     # Debug: check if event has any tool-related attributes
                     tool_attrs = {k: v for k, v in event.__dict__.items() if 'tool' in k.lower()}

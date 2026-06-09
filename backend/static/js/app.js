@@ -466,9 +466,198 @@ if (clearConsoleBtn) {
   clearConsoleBtn.addEventListener('click', clearConsole);
 }
 
+// ---------------------------------------------------------------------------
+// Form-cue canvas overlays
+// ---------------------------------------------------------------------------
+
+const formCueCanvas = document.getElementById("formCueCanvas");
+const formCueCtx = formCueCanvas ? formCueCanvas.getContext("2d") : null;
+let _cueTimeout = null;
+
+function _syncCanvasSize() {
+  if (!formCueCanvas) return;
+  const container = formCueCanvas.parentElement;
+  if (!container) return;
+  formCueCanvas.width  = container.clientWidth;
+  formCueCanvas.height = container.clientHeight;
+}
+
+function _clearCue() {
+  if (!formCueCtx || !formCueCanvas) return;
+  formCueCtx.clearRect(0, 0, formCueCanvas.width, formCueCanvas.height);
+}
+
+function drawFormCue(correctionText, exercise) {
+  if (!formCueCtx || !formCueCanvas) return;
+  _syncCanvasSize();
+  _clearCue();
+  if (_cueTimeout) { clearTimeout(_cueTimeout); _cueTimeout = null; }
+
+  const w = formCueCanvas.width;
+  const h = formCueCanvas.height;
+  const padding = 16;
+  const fontSize = Math.max(16, Math.round(w * 0.028));
+
+  formCueCtx.save();
+
+  // Pill background
+  const label = exercise ? exercise.replace(/_/g, " ").toUpperCase() : "";
+  const mainText = correctionText;
+  const boxH = label ? fontSize * 3.4 : fontSize * 2.4;
+  const boxW = Math.min(w * 0.9, 520);
+  const x = (w - boxW) / 2;
+  const y = h - boxH - 36;
+
+  formCueCtx.fillStyle = "rgba(0,0,0,0.72)";
+  formCueCtx.strokeStyle = "rgba(255,107,53,0.8)";
+  formCueCtx.lineWidth = 1.5;
+  formCueCtx.beginPath();
+  formCueCtx.roundRect(x, y, boxW, boxH, 10);
+  formCueCtx.fill();
+  formCueCtx.stroke();
+
+  // Exercise label (small, orange)
+  if (label) {
+    formCueCtx.fillStyle = "#ff6b35";
+    formCueCtx.font = `600 ${Math.round(fontSize * 0.72)}px 'Roboto Condensed', sans-serif`;
+    formCueCtx.textAlign = "center";
+    formCueCtx.fillText(label, x + boxW / 2, y + fontSize * 1.1);
+  }
+
+  // Correction text (white)
+  formCueCtx.fillStyle = "#ffffff";
+  formCueCtx.font = `600 ${fontSize}px 'Inter', sans-serif`;
+  formCueCtx.textAlign = "center";
+  const textY = label ? y + fontSize * 2.4 : y + fontSize * 1.6;
+  formCueCtx.fillText(mainText, x + boxW / 2, textY, boxW - padding * 2);
+
+  formCueCtx.restore();
+
+  // Fade after 3 seconds
+  _cueTimeout = setTimeout(_clearCue, 3000);
+}
+
+function drawPlanFlash(blockName) {
+  if (!formCueCtx || !formCueCanvas) return;
+  _syncCanvasSize();
+  if (_cueTimeout) { clearTimeout(_cueTimeout); _cueTimeout = null; }
+
+  const w = formCueCanvas.width;
+  const fontSize = Math.max(14, Math.round(w * 0.022));
+  const text = "NEXT: " + blockName.toUpperCase();
+  const boxW = Math.min(w * 0.6, 360);
+  const boxH = fontSize * 2.2;
+  const x = (w - boxW) / 2;
+  const y = 24;
+
+  formCueCtx.save();
+  formCueCtx.fillStyle = "rgba(255,107,53,0.15)";
+  formCueCtx.strokeStyle = "rgba(255,107,53,0.7)";
+  formCueCtx.lineWidth = 1;
+  formCueCtx.beginPath();
+  formCueCtx.roundRect(x, y, boxW, boxH, 8);
+  formCueCtx.fill();
+  formCueCtx.stroke();
+
+  formCueCtx.fillStyle = "#ff6b35";
+  formCueCtx.font = `700 ${fontSize}px 'Roboto Condensed', sans-serif`;
+  formCueCtx.textAlign = "center";
+  formCueCtx.fillText(text, x + boxW / 2, y + fontSize * 1.5);
+  formCueCtx.restore();
+
+  _cueTimeout = setTimeout(_clearCue, 2500);
+}
+
+window.addEventListener("resize", () => {
+  if (formCueCanvas) _syncCanvasSize();
+});
+
+// ---------------------------------------------------------------------------
+// Pre-session setup overlay
+// ---------------------------------------------------------------------------
+
+const setupOverlay    = document.getElementById("setupOverlay");
+const setupForm       = document.getElementById("setupForm");
+const setupSubmitBtn  = document.getElementById("setupSubmitBtn");
+const goalInput       = document.getElementById("goalInput");
+const durationInput   = document.getElementById("durationInput");
+const durationDisplay = document.getElementById("durationDisplay");
+const energyLabel     = document.getElementById("energyLabel");
+
+const ENERGY_LABELS = { 1: "Exhausted", 2: "Low", 3: "Neutral", 4: "Good", 5: "Energized" };
+
+let setupSpace  = "medium";
+let setupEnergy = 3;
+
+// Duration slider — live update
+if (durationInput) {
+  durationInput.addEventListener("input", () => {
+    if (durationDisplay) durationDisplay.textContent = durationInput.value;
+  });
+}
+
+// Space option buttons
+document.getElementById("spaceOptions")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".setup-option-btn");
+  if (!btn) return;
+  document.querySelectorAll(".setup-option-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  setupSpace = btn.dataset.value;
+});
+
+// Energy buttons
+document.getElementById("energyOptions")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".setup-energy-btn");
+  if (!btn) return;
+  document.querySelectorAll(".setup-energy-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  setupEnergy = parseInt(btn.dataset.value, 10);
+  if (energyLabel) energyLabel.textContent = ENERGY_LABELS[setupEnergy] || "Neutral";
+});
+
+function updateSetupSubmitReady() {
+  if (!setupSubmitBtn) return;
+  setupSubmitBtn.disabled = !(websocket && websocket.readyState === WebSocket.OPEN);
+}
+
+// Setup form submit
+if (setupForm) {
+  setupForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+
+    const goal         = goalInput ? goalInput.value.trim() : "";
+    const duration     = durationInput ? parseInt(durationInput.value, 10) : 20;
+    const preferLow    = setupEnergy <= 2;
+    const level        = setupEnergy <= 2 ? "beginner" : setupEnergy === 3 ? "intermediate" : "advanced";
+
+    // Persist for sendSessionEnd
+    sessionGoal = goal || "complete workout";
+
+    websocket.send(JSON.stringify({
+      type: "session_config",
+      goal,
+      duration_minutes: duration,
+      space: setupSpace,
+      energy_level: setupEnergy,
+      prefer_low_impact: preferLow,
+      level,
+    }));
+
+    if (setupOverlay) setupOverlay.classList.remove("visible");
+    void startHudSession();
+  });
+}
+
 if (startSessionButton) {
   startSessionButton.addEventListener("click", () => {
-    void startHudSession();
+    if (setupOverlay) {
+      updateSetupSubmitReady();
+      setupOverlay.classList.add("visible");
+      if (goalInput) goalInput.focus();
+    } else {
+      void startHudSession();
+    }
   });
 }
 
@@ -533,6 +722,7 @@ function updateConnectionStatus(connected) {
   if (startSessionButton && startSessionButton.style.display !== "none") {
     startSessionButton.disabled = !connected;
   }
+  updateSetupSubmitReady();
 }
 
 // Create a message bubble element
@@ -692,8 +882,18 @@ function connectWebsocket() {
       return;
     }
 
+    if (adkEvent.type === "form_correction") {
+      const corrections = adkEvent.corrections ?? [];
+      if (corrections.length > 0) {
+        drawFormCue(corrections[0], adkEvent.exercise ?? null);
+      }
+      return;
+    }
+
     if (adkEvent.type === "routine_plan_updated") {
       const blocks = adkEvent.routine_plan?.blocks ?? [];
+      const nextBlock = blocks[0]?.name ?? null;
+      if (nextBlock) drawPlanFlash(nextBlock);
       addConsoleEntry("incoming", `Schedule updated: ${blocks.length} blocks remaining`, adkEvent, "📋", "system");
       return;
     }

@@ -82,10 +82,10 @@ Once real session traces are collected, use them to identify where the agent dri
 
 *Goal: make the session smarter mid-workout, not just at setup.*
 
-- [ ] Mid-session adaptive scheduling (restructure remaining blocks based on elapsed time and interruptions)
-- [ ] Fatigue signal detection from video/audio cues
-- [ ] Dynamic difficulty adjustment within a session
-- [ ] Smarter interruption recovery (coach picks up contextually, not from the top)
+- [x] Mid-session adaptive scheduling (restructure remaining blocks based on elapsed time and interruptions)
+- [x] Fatigue signal detection from video/audio cues
+- [x] Dynamic difficulty adjustment within a session
+- [x] Smarter interruption recovery (coach picks up contextually, not from the top)
 
 **Done when:** A session interrupted twice still delivers a complete, sensible workout.
 

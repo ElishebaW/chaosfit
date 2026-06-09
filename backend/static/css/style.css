@@ -1405,6 +1405,200 @@ button {
   font-family: inherit;
 }
 
+/* Form-cue canvas overlay — sits above video, pointer-events off so it never blocks interaction */
+.form-cue-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 50;
+  pointer-events: none;
+}
+
+/* -----------------------------------------------------------------------
+   Pre-session Setup Overlay
+   ----------------------------------------------------------------------- */
+
+.setup-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(12px);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.setup-overlay.visible {
+  display: flex;
+}
+
+.setup-card {
+  background: #111111;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 36px 40px 32px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.setup-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.setup-title {
+  font-family: 'Bebas Neue', 'Roboto Condensed', sans-serif;
+  font-size: 2.4rem;
+  color: var(--primary-color);
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+.setup-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-top: 4px;
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.setup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setup-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+.setup-value {
+  color: var(--primary-color);
+}
+
+.setup-input {
+  background: #1a1a1a;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.setup-input:focus {
+  border-color: var(--primary-color);
+}
+
+.setup-range {
+  width: 100%;
+  accent-color: var(--primary-color);
+  cursor: pointer;
+  height: 4px;
+}
+
+.setup-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.setup-options {
+  display: flex;
+  gap: 8px;
+}
+
+.setup-option-btn {
+  flex: 1;
+  padding: 9px 6px;
+  background: #1a1a1a;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.setup-option-btn.active,
+.setup-option-btn:hover {
+  background: rgba(255, 107, 53, 0.12);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.setup-energy-btn {
+  flex: 1;
+  padding: 10px 4px;
+  background: #1a1a1a;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.setup-energy-btn.active,
+.setup-energy-btn:hover {
+  background: rgba(255, 107, 53, 0.12);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.setup-submit-btn {
+  margin-top: 6px;
+  padding: 14px;
+  background: var(--primary-color);
+  border: none;
+  border-radius: 10px;
+  color: #000000;
+  font-family: 'Bebas Neue', 'Roboto Condensed', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.setup-submit-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.setup-submit-btn:not(:disabled):hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+/* -----------------------------------------------------------------------
+   END Setup Overlay
+   ----------------------------------------------------------------------- */
+
 .btn-secondary:hover {
   background-color: #f8f9fa;
   border-color: #bdc1c6;
