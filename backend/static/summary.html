@@ -228,12 +228,21 @@
           </div>
         </section>
 
+        <section class="panel span-4">
+          <div class="stat">
+            <div class="stat-number" id="pauseCount">--</div>
+            <div class="stat-label">PAUSES</div>
+            <div class="stat-meta" id="pauseMeta">Total pause time: --</div>
+          </div>
+        </section>
+
         <section class="panel span-12">
           <div class="summary-text" id="summaryText">Loading summary...</div>
           <div class="closing" id="closingLine">--</div>
 
           <div class="actions">
             <button class="action-btn" id="startNew">START NEW SESSION</button>
+            <button class="action-btn secondary" id="copyBtn">COPY SUMMARY</button>
             <button class="action-btn secondary" id="backToLive">BACK TO LIVE VIEW</button>
           </div>
         </section>
@@ -268,7 +277,10 @@
         return await resp.json();
       }
 
+      let _currentReport = null;
+
       function render(report) {
+        _currentReport = report;
         const details = report.details || {};
         const repCount = report.rep_count ?? details.rep_count ?? 0;
         const exerciseType = report.exercise_type ?? details.exercise_type ?? 'unknown';
@@ -277,6 +289,8 @@
         const durationSec = report.session_duration_sec ?? null;
         const startedAt = report.started_at ?? details.started_at ?? '';
         const endedAt = report.ended_at ?? details.ended_at ?? '';
+        const pauseCount = report.pause_count ?? details.pause_count ?? 0;
+        const pauseSec = report.total_pause_time_seconds ?? details.total_pause_time_seconds ?? 0;
 
         document.getElementById('repCount').textContent = repCount;
         document.getElementById('exerciseType').textContent = `Exercise: ${String(exerciseType).toUpperCase()}`;
@@ -284,7 +298,8 @@
         document.getElementById('sessionTimes').textContent = startedAt && endedAt ? `${startedAt} → ${endedAt}` : (startedAt || endedAt || '');
         document.getElementById('interruptionMeta').textContent = `Interruptions: ${interruptions}`;
         document.getElementById('correctionsCount').textContent = Array.isArray(corrections) ? corrections.length : 0;
-        document.getElementById('interruptionMeta').textContent = `Interruptions: ${interruptions}`;
+        document.getElementById('pauseCount').textContent = pauseCount;
+        document.getElementById('pauseMeta').textContent = `Total pause time: ${formatDuration(pauseSec)}`;
 
         // Show form corrections in summary text if available, otherwise fallback to summary
         let summaryText;
@@ -339,14 +354,36 @@
 
         console.log('Buttons found:', !!startNewBtn, !!backBtn);
 
-        startNewBtn.addEventListener('click', () => {
-          console.log('Start New button clicked');
-          window.location.href = '/';
-        });
-        backBtn.addEventListener('click', () => {
-          console.log('Back to Live button clicked');
-          window.location.href = '/';
-        });
+        startNewBtn.addEventListener('click', () => { window.location.href = '/'; });
+        backBtn.addEventListener('click', () => { window.location.href = '/'; });
+
+        const copyBtn = document.getElementById('copyBtn');
+        if (copyBtn) {
+          copyBtn.addEventListener('click', () => {
+            if (!_currentReport) return;
+            const r = _currentReport;
+            const d = r.details || {};
+            const lines = [
+              'CHAOSFIT — SESSION SUMMARY',
+              '─'.repeat(30),
+              `Exercise : ${(r.exercise_type ?? d.exercise_type ?? 'unknown').toUpperCase()}`,
+              `Reps     : ${r.rep_count ?? d.rep_count ?? 0}`,
+              `Duration : ${formatDuration(r.session_duration_sec ?? null)}`,
+              `Pauses   : ${r.pause_count ?? d.pause_count ?? 0}`,
+              `Corrections: ${(r.form_corrections ?? d.form_corrections ?? []).length}`,
+            ];
+            if (r.session_goal) lines.push(`Goal     : ${r.session_goal}`);
+            if (r.motivational_closing_line) lines.push('', r.motivational_closing_line);
+            const text = lines.join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+              copyBtn.textContent = 'COPIED!';
+              setTimeout(() => { copyBtn.textContent = 'COPY SUMMARY'; }, 2000);
+            }).catch(() => {
+              copyBtn.textContent = 'COPY FAILED';
+              setTimeout(() => { copyBtn.textContent = 'COPY SUMMARY'; }, 2000);
+            });
+          });
+        }
 
         if (!sessionId) {
           document.getElementById('subtitle').textContent = 'Missing session_id in URL';

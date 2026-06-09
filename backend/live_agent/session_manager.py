@@ -138,6 +138,7 @@ class SessionState:
     routine_plan: dict[str, Any] | None = None
     current_block_index: int = 0
     last_difficulty_adjustment_at: str | None = None
+    session_goal: str | None = None
 
     def elapsed_active_sec(self) -> float:
         """Wall-clock seconds minus accumulated pause time."""
@@ -201,6 +202,26 @@ class SessionManager:
             time_remaining_sec=time_remaining_sec,
             live_model=live_model,
         )
+        # Restore from a previous paused session if recovery data exists in Firestore
+        recovery = self._restore_session_from_firestore(session_id)
+        if recovery:
+            state.cumulative_rep_count = int(recovery.get("cumulative_rep_count") or 0)
+            state.rep_count = int(recovery.get("rep_count") or 0)
+            state.form_corrections = list(recovery.get("form_corrections") or [])
+            state.current_block_index = int(recovery.get("current_block_index") or 0)
+            state.routine_plan = recovery.get("routine_plan")
+            state.current_exercise = recovery.get("current_exercise")
+            state.exercise_history = list(recovery.get("exercise_history") or [])
+            state.planned_duration_minutes = _as_int(recovery.get("planned_duration_minutes"))
+            state.session_goal = recovery.get("session_goal")
+            state.total_pause_time_seconds = float(recovery.get("total_pause_time_seconds") or 0.0)
+            state.pause_count = int(recovery.get("pause_count") or 0)
+            state.total_interruptions = int(recovery.get("total_interruptions") or 0)
+            state.coach_interruptions = int(recovery.get("coach_interruptions") or 0)
+            state.recent_fatigue = _as_float(recovery.get("recent_fatigue"))
+            state.recent_form_score = _as_float(recovery.get("recent_form_score"))
+            state.last_difficulty_adjustment_at = recovery.get("last_difficulty_adjustment_at")
+            logging.info("Restored session %s from Firestore recovery data", session_id)
         self._mem[session_id] = state
         _trace_session_setup(session_id, parent_id, time_remaining_sec, live_model)
         self._upsert_session_doc(state)
@@ -245,6 +266,13 @@ class SessionManager:
             state.level = str(raw_level).strip() if raw_level is not None and str(raw_level).strip() else None
         if "routine_plan" in payload and isinstance(payload.get("routine_plan"), dict):
             state.routine_plan = payload.get("routine_plan")
+        if "goal" in payload and payload.get("goal"):
+            state.session_goal = str(payload["goal"])
+
+        # Passive signal check — runs after all payload mutations so fatigue/plan are current.
+        # Skip after explicit agent-triggered adjustments to avoid double-firing.
+        if event_type != "difficulty_adjustment":
+            self._maybe_auto_adjust_difficulty(session_id, state)
 
         # Passive signal check — runs after all payload mutations so fatigue/plan are current.
         # Skip after explicit agent-triggered adjustments to avoid double-firing.
@@ -508,7 +536,7 @@ class SessionManager:
     ) -> None:
         try:
             state = self.get(session_id)
-            session_goal = session_goal or os.getenv("COACH_SESSION_GOAL")
+            session_goal = session_goal or state.session_goal or os.getenv("COACH_SESSION_GOAL")
 
             # Use accumulated state data as primary source, fallback to provided parameters
             final_exercise_type = exercise_type or state.current_exercise
@@ -575,6 +603,7 @@ class SessionManager:
         state.pause_count += 1
         _trace_interruption(session_id, "pause", reason, state.pause_count, state.total_pause_time_seconds)
         self._upsert_session_doc(state)
+        self._write_full_session_state(state)
         self.append_event(
             session_id,
             "session_state",
@@ -747,6 +776,51 @@ class SessionManager:
             logging.info(f"Session document upserted: {state.session_id}")
         except Exception as e:
             logging.error(f"Failed to upsert session document: {e}")
+
+    def _write_full_session_state(self, state: SessionState) -> None:
+        """Persist recovery fields to Firestore on pause so a reconnect can restore them."""
+        if not self._firestore:
+            return
+        try:
+            self._firestore.collection(SESSIONS_COLLECTION).document(state.session_id).set(
+                {
+                    "recovery": {
+                        "cumulative_rep_count": state.cumulative_rep_count,
+                        "rep_count": state.rep_count,
+                        "form_corrections": list(state.form_corrections),
+                        "current_block_index": state.current_block_index,
+                        "routine_plan": state.routine_plan,
+                        "current_exercise": state.current_exercise,
+                        "exercise_history": list(state.exercise_history),
+                        "planned_duration_minutes": state.planned_duration_minutes,
+                        "session_goal": state.session_goal,
+                        "total_pause_time_seconds": state.total_pause_time_seconds,
+                        "pause_count": state.pause_count,
+                        "total_interruptions": state.total_interruptions,
+                        "coach_interruptions": state.coach_interruptions,
+                        "recent_fatigue": state.recent_fatigue,
+                        "recent_form_score": state.recent_form_score,
+                        "last_difficulty_adjustment_at": state.last_difficulty_adjustment_at,
+                    }
+                },
+                merge=True,
+            )
+            logging.info("Session recovery state persisted for %s", state.session_id)
+        except Exception as e:
+            logging.error("Failed to persist session recovery state %s: %s", state.session_id, e)
+
+    def _restore_session_from_firestore(self, session_id: str) -> dict | None:
+        """Return persisted recovery fields for session_id, or None if unavailable."""
+        if not self._firestore:
+            return None
+        try:
+            doc = self._firestore.collection(SESSIONS_COLLECTION).document(session_id).get()
+            if not doc.exists:
+                return None
+            return (doc.to_dict() or {}).get("recovery")
+        except Exception as e:
+            logging.error("Failed to read recovery state for %s: %s", session_id, e)
+            return None
 
     def _write_routine_plan(self, state: SessionState) -> None:
         if not self._firestore or not state.routine_plan:
