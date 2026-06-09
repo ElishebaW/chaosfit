@@ -274,6 +274,11 @@ class SessionManager:
         if event_type != "difficulty_adjustment":
             self._maybe_auto_adjust_difficulty(session_id, state)
 
+        # Passive signal check — runs after all payload mutations so fatigue/plan are current.
+        # Skip after explicit agent-triggered adjustments to avoid double-firing.
+        if event_type != "difficulty_adjustment":
+            self._maybe_auto_adjust_difficulty(session_id, state)
+
         if not self._firestore:
             logging.debug(f"Firestore disabled, skipping event write for session {session_id}")
             return
