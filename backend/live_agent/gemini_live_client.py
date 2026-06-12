@@ -19,10 +19,8 @@ from .form_feedback_prompt import build_live_system_instruction
 
 
 PREFERRED_LIVE_MODELS = (
-    "gemini-2.5-flash-live-001",
-    "gemini-2.5-flash-live-preview-04-09",
-    "gemini-2.0-flash-live-001",
-    "gemini-2.0-flash-live-preview-04-09",
+    "gemini-live-2.5-flash-native-audio",
+    "gemini-2.5-flash-native-audio-preview-12-2025",
 )
 
 

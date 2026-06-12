@@ -95,10 +95,10 @@ Once real session traces are collected, use them to identify where the agent dri
 
 *Goal: make the user experience smooth enough for daily use.*
 
-- [ ] Pause/resume with full state recovery (no dropped reps, no lost session context)
-- [ ] Guided pre-session setup flow (goal, duration, space, energy level — before streaming starts)
-- [ ] Improved visual feedback overlays (form cues on canvas, not just voice)
-- [ ] Clearer session summary UI (not just JSON, a readable post-workout card)
+- [x] Pause/resume with full state recovery (no dropped reps, no lost session context)
+- [x] Guided pre-session setup flow (goal, duration, space, energy level — before streaming starts)
+- [x] Improved visual feedback overlays (form cues on canvas, not just voice)
+- [x] Clearer session summary UI (not just JSON, a readable post-workout card)
 
 **Done when:** A first-time user can complete a session start-to-summary without reading docs.
 
