@@ -42,7 +42,7 @@ except Exception:
 
 agent = Agent(
     name="chaosfit_live_coach",
-    model=os.getenv("DEMO_AGENT_MODEL", "gemini-2.5-flash-live-001"),
+    model=os.getenv("DEMO_AGENT_MODEL", "gemini-live-2.5-flash-native-audio"),
     instruction=_instruction,
     tools=[emit_exercise_data_tool, report_fatigue_tool, adjust_difficulty_tool],
 )
