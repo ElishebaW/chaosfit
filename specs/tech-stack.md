@@ -9,7 +9,7 @@ This document describes the current, locked technology choices for ChaosFit. Cha
 | Language | Python 3.11+ | ADK and Gemini SDK are Python-native |
 | Web framework | FastAPI | Async WebSocket support, minimal overhead |
 | AI runtime | Google ADK (Application Development Kit) | Manages Gemini Live API session lifecycle |
-| AI model — live coach | Gemini Live API (`gemini-2.5-flash-live-001`) | Native multimodal audio + video, real-time streaming |
+| AI model — live coach | Gemini Live API (`gemini-live-2.5-flash-native-audio`) | Native multimodal audio + video, real-time streaming |
 | AI model — block planner | `gemini-2.5-flash` (env: `NEXT_BLOCK_MODEL`) | Generates the next workout block as structured JSON |
 | AI model — session summary | `gemini-2.5-flash` (env: `SUMMARY_MODEL`) | Produces the post-session summary from trace data |
 | Package manager | uv | Fast dependency resolution, lockfile support |
